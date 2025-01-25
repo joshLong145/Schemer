@@ -56,10 +56,10 @@ pub fn eval(
                                         let p = sub_exp[0].clone();
                                         match p {
                                             SymbolicExpression::Atom(sym_exp) => {
-                                                if let Some(e) = symbol_definitions.get(&sym_exp) {
+                                                if let Some(_) = symbol_definitions.get(&sym_exp) {
                                                     return Err(format!(
-                                                        "Invalid expression {}",
-                                                        e
+                                                        "{} is already defined",
+                                                        sym_exp
                                                     ));
                                                 } else {
                                                     symbol_definitions.insert(
@@ -72,30 +72,19 @@ pub fn eval(
                                             SymbolicExpression::List(e) => {
                                                 return Err(format!("Invalid expression {:?}", e));
                                             }
+                                            SymbolicExpression::Lambda(_) => todo!(),
                                         }
                                     }
+                                    SymbolicExpression::Lambda(_) => todo!(),
                                 };
                             }
                             if exp == "lambda" {
-                                let local_symbol_map: HashMap<String, SymbolicExpression> =
-                                    HashMap::new();
-
-                                let body = vec[2].clone();
-
-                                let proc = Proc {
-                                    params: local_symbol_map,
-                                    body: body.clone(),
-                                    env,
-                                };
-                                debug!("body for lambda {}", body);
-                                proc.proc_eval(symbol_definitions)
+                                let sym_exp = SymbolicExpression::Lambda(vec.clone());
+                                debug!("Found lambda {:?}", vec);
+                                eval(&sym_exp, env, symbol_definitions)
                             } else if exp == "if" {
                                 let test =
                                     resolve_symbol_if_present(&vec[1], symbol_definitions, env);
-                                let consq =
-                                    resolve_symbol_if_present(&vec[2], symbol_definitions, env);
-                                let cond_exp =
-                                    resolve_symbol_if_present(&vec[3], symbol_definitions, env);
 
                                 let test_res = eval(&test, env, symbol_definitions).unwrap();
                                 debug!("evaluation of test for condition {} {}", test, test_res);
@@ -111,10 +100,23 @@ pub fn eval(
                                             }
                                             Atom::Bool(boolean) => match boolean {
                                                 crate::types::RLispBoolean::True(_) => {
-                                                    eval(&consq, env, symbol_definitions)
+                                                    eval(&vec[2], env, symbol_definitions)
                                                 }
                                                 crate::types::RLispBoolean::False(_) => {
-                                                    eval(&cond_exp, env, symbol_definitions)
+                                                    debug!(
+                                                        "cond expression for eval: {:?}",
+                                                        vec[3]
+                                                    );
+                                                    if SymbolicExpression::is_proc(&vec[3]) {
+                                                        return eval(
+                                                            &SymbolicExpression::Lambda(
+                                                                vec[3].clone().try_into().unwrap(),
+                                                            ),
+                                                            env,
+                                                            symbol_definitions,
+                                                        );
+                                                    }
+                                                    eval(&vec[3], env, symbol_definitions)
                                                 }
                                             },
                                         }
@@ -122,6 +124,7 @@ pub fn eval(
                                     SymbolicExpression::List(_) => {
                                         Err("invalid expression".to_string())
                                     }
+                                    SymbolicExpression::Lambda(_) => todo!(),
                                 }
                             } else {
                                 // procedure call
@@ -134,42 +137,19 @@ pub fn eval(
                                                 symbol_definitions,
                                                 env,
                                             );
-                                            debug!("resolved symbol args for {} {}", exp, e);
-
-                                            if let Some(p) = e.try_peek() {
-                                                if let Some(q) = p.try_peek() {
-                                                    if q.to_string() == "lambda" {
-                                                        let lambda_invoke = e.clone();
-                                                        match lambda_invoke {
-                                                            SymbolicExpression::Atom(_) => todo!(),
-                                                            SymbolicExpression::List(vec) => {
-                                                                debug!(
-                                                                    "found lambda to invoke {:?}",
-                                                                    vec
-                                                                );
-                                                                let params = vec[1].clone();
-                                                                let mapped_exp = map_args(
-                                                                    vec[0].clone(),
-                                                                    params,
-                                                                    env,
-                                                                )
-                                                                .unwrap();
-
-                                                                return eval(
-                                                                    &mapped_exp,
-                                                                    env,
-                                                                    symbol_definitions,
-                                                                )
-                                                                .unwrap();
-                                                            }
-                                                        }
-                                                    }
-                                                }
+                                            if SymbolicExpression::is_proc(&e) {
+                                                debug!("resolved symbol args for {} {}", exp, e);
+                                                return eval(
+                                                    &SymbolicExpression::Lambda(
+                                                        e.try_into().unwrap(),
+                                                    ),
+                                                    env,
+                                                    symbol_definitions,
+                                                )
+                                                .unwrap();
                                             }
-
-                                            let res = eval(&e, env, symbol_definitions).unwrap();
-                                            debug!("building args, current: {}", res);
-                                            res
+                                            debug!("resolved symbol args for {} {}", exp, e);
+                                            eval(&e, env, symbol_definitions).unwrap()
                                         })
                                         .collect();
                                     debug!("proc {} args {:?}", exp, args);
@@ -188,32 +168,67 @@ pub fn eval(
                                             match f {
                                                 SymbolicExpression::Atom(e) => {
                                                     return Err(format!(
-                                                        "Invalid expression {}",
+                                                        "Invalid expression for proc {}",
                                                         e
                                                     ));
                                                 }
                                                 SymbolicExpression::List(sub_exp) => {
-                                                    let params = vec[1].clone();
-                                                    debug!("lambda parameters {}", params);
-                                                    let mapped_exp = map_args(
+                                                    let l_args: Vec<SymbolicExpression> = vec
+                                                        [vec.len() - 1]
+                                                        .clone()
+                                                        .try_into()
+                                                        .unwrap();
+                                                    let l_invoke: Vec<SymbolicExpression> = vec![
                                                         SymbolicExpression::List(sub_exp.clone()),
-                                                        params,
-                                                        env,
-                                                    )
-                                                    .unwrap();
-                                                    debug!("mapped expression: {}", mapped_exp);
+                                                        SymbolicExpression::List(l_args),
+                                                    ]
+                                                    .iter()
+                                                    .map(|se| {
+                                                        let e = resolve_symbol_if_present(
+                                                            se,
+                                                            symbol_definitions,
+                                                            env,
+                                                        );
+                                                        if SymbolicExpression::is_proc(&e) {
+                                                            debug!(
+                                                                "resolved symbol args for {} {}",
+                                                                exp, e
+                                                            );
+                                                            return eval(
+                                                                &SymbolicExpression::Lambda(
+                                                                    e.try_into().unwrap(),
+                                                                ),
+                                                                env,
+                                                                symbol_definitions,
+                                                            )
+                                                            .unwrap();
+                                                        }
+                                                        debug!(
+                                                            "resolved symbol args for {} {}",
+                                                            exp, e
+                                                        );
+                                                        eval(&e, env, symbol_definitions).unwrap()
+                                                    })
+                                                    .collect();
+                                                    debug!(
+                                                        "invoke proc looked up from symbol: {:?}",
+                                                        l_invoke
+                                                    );
                                                     return Ok(eval(
-                                                        &mapped_exp,
+                                                        &SymbolicExpression::Lambda(
+                                                            l_invoke.to_owned(),
+                                                        ),
                                                         env,
                                                         symbol_definitions,
                                                     )
                                                     .unwrap());
                                                 }
+                                                SymbolicExpression::Lambda(_) => todo!(),
                                             }
                                         }
 
                                         None => {
-                                            return Err(format!("Invalid expression {}", exp));
+                                            return Err(format!("{} is not defined", exp));
                                         }
                                     }
                                 }
@@ -222,12 +237,48 @@ pub fn eval(
                     }
                 }
                 SymbolicExpression::List(vec) => Ok(SymbolicExpression::List(vec)),
+                SymbolicExpression::Lambda(l) => Ok(SymbolicExpression::Lambda(l)),
+            }
+        }
+        SymbolicExpression::Lambda(exp) => {
+            if exp.len() == 3 {
+                debug!("found lambda definition returning as exp");
+                return Ok(SymbolicExpression::Lambda(exp.clone().try_into().unwrap()));
+            } else {
+                let lambda: Vec<SymbolicExpression> = exp[0].clone().try_into().unwrap();
+                debug!("lambda exp: {:?}", lambda);
+                debug!("evaluating call to lambda {:?}", lambda);
+                let params = HashMap::new();
+                let signature = lambda[1].clone();
+                let mapped_exp = map_args(
+                    SymbolicExpression::List(exp.clone()),
+                    signature.clone(),
+                    env,
+                )
+                .unwrap();
+                let l_wrapper: Vec<SymbolicExpression> = mapped_exp.try_into().unwrap();
+                let mapped_lambda: Vec<SymbolicExpression> =
+                    l_wrapper[0].clone().try_into().unwrap();
+                debug!("evaulating mapped lambda exp {:?}", l_wrapper);
+                let proc = Proc {
+                    body: mapped_lambda[2].clone(),
+                    params,
+                    env,
+                    signature,
+                };
+                debug!(
+                    "Invoking lambda {} last value in sym exp length: {}",
+                    proc,
+                    exp.len()
+                );
+                debug!("lambda found to have more expressions: {:?}", lambda);
+                proc.proc_eval(symbol_definitions)
             }
         }
     }
 }
 
-fn map_args(
+pub fn map_args(
     exp: SymbolicExpression,
     arguements: SymbolicExpression,
     env: &HashMap<
@@ -243,8 +294,19 @@ fn map_args(
         SymbolicExpression::List(sub_exp) => {
             let params = sub_exp[1].clone();
             match params {
-                SymbolicExpression::Atom(_) => {
-                    return Ok(exp.clone());
+                SymbolicExpression::Atom(p) => {
+                    let exp = match arguements {
+                        SymbolicExpression::Atom(_) => {
+                            return Ok(exp.clone());
+                        }
+                        SymbolicExpression::List(ref vec) => {
+                            debug!("found argument to lambda: {} arg: {}", exp, vec[0]);
+                            vec[0].clone()
+                        }
+                        SymbolicExpression::Lambda(ref l) => SymbolicExpression::Lambda(l.clone()),
+                    };
+
+                    param_pairs.insert(exp.to_string(), SymbolicExpression::Atom(p));
                 }
                 SymbolicExpression::List(p) => {
                     for i in 0..p.len() {
@@ -256,14 +318,37 @@ fn map_args(
                                 debug!("found argument to lambda: {} arg: {}", exp, vec[i]);
                                 vec[i].clone()
                             }
+                            SymbolicExpression::Lambda(ref l) => {
+                                SymbolicExpression::Lambda(l.clone())
+                            }
                         };
 
                         let symbol = p[i].clone();
-                        param_pairs.insert(symbol.to_string(), exp);
+                        param_pairs.insert(exp.to_string(), symbol);
+                    }
+                }
+                SymbolicExpression::Lambda(p) => {
+                    for i in 0..p.len() {
+                        let exp = match arguements {
+                            SymbolicExpression::Atom(_) => {
+                                return Ok(exp.clone());
+                            }
+                            SymbolicExpression::List(ref vec) => {
+                                debug!("found argument to lambda: {} arg: {}", exp, vec[i]);
+                                vec[i].clone()
+                            }
+                            SymbolicExpression::Lambda(ref l) => {
+                                SymbolicExpression::Lambda(l.clone())
+                            }
+                        };
+
+                        let symbol = p[i].clone();
+                        param_pairs.insert(exp.to_string(), symbol);
                     }
                 }
             }
         }
+        SymbolicExpression::Lambda(_) => todo!(),
     };
     let res = resolve_symbol_if_present(&exp, param_pairs, env);
     debug!(
@@ -297,6 +382,15 @@ fn resolve_symbol_if_present(
             }
 
             SymbolicExpression::List(sub_exps)
+        }
+        SymbolicExpression::Lambda(l) => {
+            let mut sub_exps: Vec<SymbolicExpression> = vec![];
+            for e in l {
+                let res = resolve_symbol_if_present(e, symbol_definitions, env);
+                sub_exps.push(res);
+            }
+
+            SymbolicExpression::Lambda(sub_exps)
         }
     }
 }

@@ -1,7 +1,6 @@
-
+use log::debug;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
-use log::debug;
 use schemer::env::std_env;
 use schemer::eval::eval;
 use schemer::parser::{parse, read_from_tokens};
@@ -16,7 +15,7 @@ pub fn repl() -> rustyline::Result<()> {
     let mut rl = DefaultEditor::new()?;
 
     loop {
-        let readline = rl.readline(">> ");
+        let readline = rl.readline("ƛ >");
         match readline {
             Ok(buffer) => {
                 let _ = rl.add_history_entry(buffer.as_str());

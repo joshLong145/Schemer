@@ -1,5 +1,8 @@
+use log::debug;
+
 use crate::{
     op::NumericOps,
+    proc::{Eval, Proc},
     types::{Atom, RLispSubSymbolicExpressions, SymbolicExpression},
 };
 use std::collections::HashMap;
@@ -26,11 +29,13 @@ pub fn std_env(
             let l: Atom = match &exp[0] {
                 SymbolicExpression::Atom(a) => a.into(),
                 SymbolicExpression::List(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::Lambda(_) => return Err("invalid expression".to_string()),
             };
 
             let r: Atom = match &exp[1] {
                 SymbolicExpression::Atom(a) => a.into(),
                 SymbolicExpression::List(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::Lambda(_) => return Err("invalid expression".to_string()),
             };
 
             r.add(l)
@@ -43,11 +48,13 @@ pub fn std_env(
             let l: Atom = match &exp[0] {
                 SymbolicExpression::Atom(a) => a.into(),
                 SymbolicExpression::List(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::Lambda(_) => return Err("invalid expression".to_string()),
             };
 
             let r: Atom = match &exp[1] {
                 SymbolicExpression::Atom(a) => a.into(),
                 SymbolicExpression::List(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::Lambda(_) => return Err("invalid expression".to_string()),
             };
 
             r.sub(l)
@@ -60,11 +67,13 @@ pub fn std_env(
             let l: Atom = match &exp[0] {
                 SymbolicExpression::Atom(a) => a.into(),
                 SymbolicExpression::List(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::Lambda(_) => return Err("invalid expression".to_string()),
             };
 
             let r: Atom = match &exp[1] {
                 SymbolicExpression::Atom(a) => a.into(),
                 SymbolicExpression::List(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::Lambda(_) => return Err("invalid expression".to_string()),
             };
 
             r.mul(l)
@@ -77,11 +86,13 @@ pub fn std_env(
             let l: Atom = match &exp[0] {
                 SymbolicExpression::Atom(a) => a.into(),
                 SymbolicExpression::List(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::Lambda(_) => return Err("invalid expression".to_string()),
             };
 
             let r: Atom = match &exp[1] {
                 SymbolicExpression::Atom(a) => a.into(),
                 SymbolicExpression::List(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::Lambda(_) => return Err("invalid expression".to_string()),
             };
 
             r.div(l)
@@ -127,6 +138,7 @@ pub fn std_env(
                     }
                 }
                 SymbolicExpression::List(_) => Ok(SymbolicExpression::Atom("false".to_string())),
+                SymbolicExpression::Lambda(_) => Ok(SymbolicExpression::Atom("false".to_string())),
             }
         }),
     );
@@ -145,6 +157,7 @@ pub fn std_env(
                     }
                 }
                 SymbolicExpression::List(_) => Ok(SymbolicExpression::Atom("true".to_string())),
+                SymbolicExpression::Lambda(_) => Ok(SymbolicExpression::Atom("false".to_string())),
             }
         }),
     );
@@ -163,6 +176,7 @@ pub fn std_env(
                     }
                 }
                 SymbolicExpression::List(_) => Ok(SymbolicExpression::Atom("false".to_string())),
+                SymbolicExpression::Lambda(_) => Ok(SymbolicExpression::Atom("false".to_string())),
             }
         }),
     );
@@ -174,6 +188,7 @@ pub fn std_env(
             match exp {
                 SymbolicExpression::Atom(_) => Err("invalid expression".to_string()),
                 SymbolicExpression::List(l) => Ok(SymbolicExpression::Atom(l.len().to_string())),
+                SymbolicExpression::Lambda(_) => Err("invalid expression".to_string()),
             }
         }),
     );
@@ -185,6 +200,7 @@ pub fn std_env(
             match exp {
                 SymbolicExpression::Atom(_) => Err("invalid expression".to_string()),
                 SymbolicExpression::List(l) => Ok(l[0].clone()),
+                SymbolicExpression::Lambda(_) => Err("invalid expression".to_string()),
             }
         }),
     );
@@ -196,6 +212,99 @@ pub fn std_env(
             match exp {
                 SymbolicExpression::Atom(_) => Err("invalid expression".to_string()),
                 SymbolicExpression::List(l) => Ok(SymbolicExpression::List(l[1..l.len()].to_vec())),
+                SymbolicExpression::Lambda(_) => Err("invalid expression".to_string()),
+            }
+        }),
+    );
+
+    env.insert(
+        "<".to_string(),
+        Box::new(|exp| -> Result<SymbolicExpression, String> {
+            let l: Atom = match &exp[0] {
+                SymbolicExpression::Atom(a) => a.into(),
+                SymbolicExpression::List(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::Lambda(_) => return Err("invalid expression".to_string()),
+            };
+
+            let r: Atom = match &exp[1] {
+                SymbolicExpression::Atom(a) => a.into(),
+                SymbolicExpression::List(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::Lambda(_) => return Err("invalid expression".to_string()),
+            };
+
+            let res = l < r;
+
+            Ok(SymbolicExpression::Atom(res.to_string()))
+        }),
+    );
+
+    env.insert(
+        ">".to_string(),
+        Box::new(|exp| -> Result<SymbolicExpression, String> {
+            let l: Atom = match &exp[0] {
+                SymbolicExpression::Atom(a) => a.into(),
+                SymbolicExpression::List(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::Lambda(_) => return Err("invalid expression".to_string()),
+            };
+
+            let r: Atom = match &exp[1] {
+                SymbolicExpression::Atom(a) => a.into(),
+                SymbolicExpression::List(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::Lambda(_) => return Err("invalid expression".to_string()),
+            };
+
+            let res = l > r;
+
+            Ok(SymbolicExpression::Atom(res.to_string()))
+        }),
+    );
+
+    env.insert(
+        "map".to_string(),
+        Box::new(|exp| -> Result<SymbolicExpression, String> {
+            let env = std_env();
+            let l: Proc = match &exp[0] {
+                SymbolicExpression::Atom(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::Lambda(exp) => {
+                    match SymbolicExpression::to_proc(exp.to_owned(), &env) {
+                        Ok(proc) => proc,
+                        Err(_) => return Err("Invalid expresssion expected procedure".to_string()),
+                    }
+                }
+                SymbolicExpression::List(_) => return Err("Invalid expression".to_string()),
+            };
+            debug!("resolved proc: {}, from definition", l);
+            match &exp[1] {
+                SymbolicExpression::Atom(_) => return Err("invalid expression".to_string()),
+                SymbolicExpression::List(args) => {
+                    let mut mapping_results: Vec<SymbolicExpression> = Vec::new();
+                    for a in args {
+                        log::debug!("running mapping on {}", a);
+                        let proc_with_args: SymbolicExpression =
+                            SymbolicExpression::List([l.body.clone(), a.to_owned()].to_vec());
+                        let mapped =
+                            crate::eval::map_args(proc_with_args, l.signature.clone(), &env)
+                                .unwrap();
+                        debug!("mapped args {:?}", mapped);
+                        match mapped {
+                            SymbolicExpression::Atom(_) => todo!(),
+                            SymbolicExpression::List(l) => {
+                                let res = crate::eval::eval(
+                                    &l[0].clone(),
+                                    &std_env(),
+                                    &mut HashMap::new(),
+                                );
+
+                                debug!("res from applying argument to function: {:?}", res);
+                                mapping_results.push(res.unwrap());
+                            }
+                            SymbolicExpression::Lambda(_) => todo!(),
+                        }
+                    }
+
+                    return Ok(SymbolicExpression::List(mapping_results));
+                }
+                SymbolicExpression::Lambda(_) => return Err("Invalid expression".to_string()),
             }
         }),
     );

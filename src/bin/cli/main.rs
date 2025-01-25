@@ -1,8 +1,7 @@
-use std::fs;
 use clap::{Arg, Command, Parser};
+use std::fs;
 
 mod common;
-
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -34,5 +33,3 @@ fn main() {
         let _ = crate::common::repl();
     }
 }
-
-

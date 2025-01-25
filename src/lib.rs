@@ -6,3 +6,6 @@ pub mod eval;
 pub mod parser;
 pub mod proc;
 pub mod types;
+
+#[macro_use]
+pub mod macros;

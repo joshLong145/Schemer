@@ -7,11 +7,23 @@ use crate::{
 
 pub struct Proc<'a> {
     pub params: HashMap<String, SymbolicExpression>,
+    pub signature: SymbolicExpression,
     pub body: SymbolicExpression,
     pub env: &'a HashMap<
         String,
         Box<dyn Fn(RLispSubSymbolicExpressions) -> Result<SymbolicExpression, String>>,
     >,
+}
+
+impl std::fmt::Display for Proc<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let fmt_str = format!(
+            "{} {}",
+            self.params.clone().into_keys().collect::<String>(),
+            self.body
+        );
+        write!(f, "{}", fmt_str)
+    }
 }
 
 pub trait Eval {

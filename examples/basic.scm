@@ -1,9 +1,15 @@
-(begin 
-    (define r 10)
-    (define f (lambda (x) (* x x)))
-    ( define s 
-        (if (number? f) (+ 2 2) (print (0)))
-    )
+(begin
+    (define a (map (lambda (x) (if (< 1 x) (+ x 1) (+ x 2))) (1 2 3)))
 
-    (print s)
+    (define b 10)
+    (define r (lambda (x) (+ x b)))
+    (print (r (1)))
+
+    (print a)
+
+    (define fib (lambda (x) (
+        if (< x 2) 0 (fib (- x 1))
+    )))
+
+    (fib (5))
 )

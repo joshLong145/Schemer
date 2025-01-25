@@ -2,6 +2,7 @@ use std::collections::{HashMap, VecDeque};
 
 use schemer::env::std_env;
 use schemer::eval::eval;
+use schemer::lisp;
 use schemer::parser::{parse, read_from_tokens};
 use schemer::types::SymbolicExpression;
 
@@ -117,5 +118,78 @@ fn parse_and_eval_list_append_and_print_proc() {
     let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
 
     //debug!("expressions: {:?}", exp);
-    assert_eq!(res, SymbolicExpression::Atom("0".to_string()),)
+    assert_eq!(res, SymbolicExpression::Atom("0".to_string()))
+}
+
+#[test]
+fn parse_and_eval_lambda_define_and_invoke() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse(
+        "(begin (define f (lambda (x) (* x x))) (f (4)))".to_string(),
+        &mut exp_map,
+    );
+    let exp = read_from_tokens(&mut token_map).unwrap();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
+    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+
+    //debug!("expressions: {:?}", exp);
+    assert_eq!(res, SymbolicExpression::Atom("16".to_string()))
+}
+
+#[test]
+fn parse_and_eval_condition() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse("(begin (if (number? 1) 1 2))".to_string(), &mut exp_map);
+    let exp = read_from_tokens(&mut token_map).unwrap();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
+    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+
+    //debug!("expressions: {:?}", exp);
+    assert_eq!(res, SymbolicExpression::Atom("1".to_string()))
+}
+
+#[test]
+fn parse_and_eval_condition_as_var_definition() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse(
+        "(begin (define f (if (number? 1) 1 2)) f)".to_string(),
+        &mut exp_map,
+    );
+    let exp = read_from_tokens(&mut token_map).unwrap();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
+    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+
+    //debug!("expressions: {:?}", exp);
+    assert_eq!(res, SymbolicExpression::Atom("1".to_string()))
+}
+
+#[test]
+fn parse_and_eval_procedure_call_as_procedure_arg() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse(
+        "(begin (if (number? (car (1 2 3))) (+ 2 2) 0)) )".to_string(),
+        &mut exp_map,
+    );
+    let exp = read_from_tokens(&mut token_map).unwrap();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
+    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+
+    //debug!("expressions: {:?}", exp);
+    assert_eq!(res, SymbolicExpression::Atom("4".to_string()))
 }
