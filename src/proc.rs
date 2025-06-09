@@ -1,24 +1,25 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     eval::eval,
     types::{RLispSubSymbolicExpressions, SymbolicExpression},
 };
 
-pub struct Proc<'a> {
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Proc {
     pub params: HashMap<String, SymbolicExpression>,
     pub signature: SymbolicExpression,
     pub body: SymbolicExpression,
-    pub env: &'a HashMap<
+    pub env: Rc<RefCell<HashMap<
         String,
         Box<dyn Fn(RLispSubSymbolicExpressions) -> Result<SymbolicExpression, String>>,
-    >,
+    >>>,
 }
 
-impl std::fmt::Display for Proc<'_> {
+impl std::fmt::Display for Proc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let fmt_str = format!(
-            "{} {}",
+            "lambda: {} {}",
             self.params.clone().into_keys().collect::<String>(),
             self.body
         );
@@ -33,7 +34,7 @@ pub trait Eval {
     ) -> Result<SymbolicExpression, String>;
 }
 
-impl Eval for Proc<'_> {
+impl Eval for Proc {
     fn proc_eval(
         &self,
         symbol_definitions: &mut HashMap<String, SymbolicExpression>,
@@ -42,6 +43,6 @@ impl Eval for Proc<'_> {
         symbols.extend(self.params.clone().into_iter());
         symbols.extend(symbol_definitions.clone().into_iter());
 
-        eval(&self.body, self.env, &mut symbols)
+        eval(&self.body, &*self.env.borrow(), &mut symbols)
     }
 }

@@ -1,7 +1,6 @@
 use log::debug;
 
-use crate::proc::{Eval, Proc};
-use crate::types::{Atom, RLispSubSymbolicExpressions, SymbolicExpression};
+use crate::{proc::{Eval, Proc}, types::{Atom, RLispSubSymbolicExpressions, SymbolicExpression}};
 use std::collections::HashMap;
 
 pub fn eval(
@@ -36,7 +35,7 @@ pub fn eval(
                     // implement resolving of symbols for atoms before attempting to evaulate further epxressions
                     let atom: Atom = exp.into();
                     match atom {
-                        // if
+                        // if we find literals, we return as a list of literals
                         Atom::Number(_) => Ok(SymbolicExpression::List(vec.clone())),
                         Atom::Bool(_) => Ok(SymbolicExpression::List(vec.clone())),
                         Atom::Symbol(exp) => {
@@ -108,9 +107,12 @@ pub fn eval(
                                                         vec[3]
                                                     );
                                                     if SymbolicExpression::is_proc(&vec[3]) {
+                                                        let lambda_args: Vec<SymbolicExpression> = vec[3].clone().try_into().unwrap();
+                                                        let mut lambda = Vec::new();
+                                                        lambda.extend(lambda_args);
                                                         return eval(
                                                             &SymbolicExpression::Lambda(
-                                                                vec[3].clone().try_into().unwrap(),
+                                                                lambda,
                                                             ),
                                                             env,
                                                             symbol_definitions,
@@ -309,13 +311,14 @@ pub fn map_args(
                     param_pairs.insert(exp.to_string(), SymbolicExpression::Atom(p));
                 }
                 SymbolicExpression::List(p) => {
+                    debug!("mapping arguments {}", arguements);
                     for i in 0..p.len() {
                         let exp = match arguements {
                             SymbolicExpression::Atom(_) => {
                                 return Ok(exp.clone());
                             }
                             SymbolicExpression::List(ref vec) => {
-                                debug!("found argument to lambda: {} arg: {}", exp, vec[i]);
+                                debug!("found argument to lambda: {} args: {:?} params {:?}", exp, vec, p);
                                 vec[i].clone()
                             }
                             SymbolicExpression::Lambda(ref l) => {

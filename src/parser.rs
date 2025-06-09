@@ -5,6 +5,10 @@ use crate::{
     types::{SymbolicExpression, Tokens},
 };
 
+pub enum ParseTree {
+    Atom()
+}
+
 pub fn parse<'a>(
     program: String,
     token_store: &'a mut HashMap<String, VecDeque<String>>,
@@ -41,3 +45,6 @@ pub fn read_from_tokens(tokens: &mut Tokens) -> Result<SymbolicExpression, Parse
 
     Ok(SymbolicExpression::Atom(token))
 }
+
+
+

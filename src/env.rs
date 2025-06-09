@@ -2,7 +2,7 @@ use log::debug;
 
 use crate::{
     op::NumericOps,
-    proc::{Eval, Proc},
+    proc::Proc,
     types::{Atom, RLispSubSymbolicExpressions, SymbolicExpression},
 };
 use std::collections::HashMap;
