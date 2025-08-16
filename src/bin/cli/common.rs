@@ -1,4 +1,3 @@
-use log::debug;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use schemer::env::std_env;
@@ -26,15 +25,15 @@ pub fn repl() -> rustyline::Result<()> {
                 println!("{}", res);
             }
             Err(ReadlineError::Interrupted) => {
-                debug!("CTRL-C");
+
                 break;
             }
             Err(ReadlineError::Eof) => {
-                debug!("CTRL-D");
+
                 break;
             }
-            Err(err) => {
-                debug!("Error: {:?}", err);
+            Err(_) => {
+
                 break;
             }
         }

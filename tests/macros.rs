@@ -19,7 +19,7 @@ fn basic_literal_parse() {
     assert_eq!(ast, SymbolicExpression::List(vec![
         SymbolicExpression::Atom(String::from("1")),
         SymbolicExpression::Atom(String::from("1")),
-        SymbolicExpression::Atom(String::from("1")),        
+        SymbolicExpression::Atom(String::from("1")),
     ]))
 }
 
@@ -34,8 +34,8 @@ fn basic_operator_call_parse() {
     assert_eq!(ast, SymbolicExpression::List(vec![
         SymbolicExpression::Atom(String::from("+")),
         SymbolicExpression::Atom(String::from("1")),
-        SymbolicExpression::Atom(String::from("1")),        
-    ])) 
+        SymbolicExpression::Atom(String::from("1")),
+    ]))
 }
 
 
@@ -54,8 +54,8 @@ fn basic_operator_call_with_nesting_parse() {
             SymbolicExpression::Atom(String::from("+")),
             SymbolicExpression::Atom(String::from("1")),
             SymbolicExpression::Atom(String::from("1"))
-        ]),        
-    ])) 
+        ]),
+    ]))
 }
 
 #[test]
@@ -74,8 +74,8 @@ fn basic_operator_with_define() {
             SymbolicExpression::Atom(String::from("+")),
             SymbolicExpression::Atom(String::from("r")),
             SymbolicExpression::Atom(String::from("1"))
-        ]),        
-    ])) 
+        ]),
+    ]))
 }
 
 #[test]
@@ -93,8 +93,8 @@ fn basic_operator_with_print() {
         SymbolicExpression::List(vec![
             SymbolicExpression::Atom(String::from("print")),
             SymbolicExpression::Atom(String::from("r")),
-        ]),        
-    ])) 
+        ]),
+    ]))
 }
 
 

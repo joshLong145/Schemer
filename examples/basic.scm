@@ -1,15 +1,22 @@
 (begin
-    (define a (map (lambda (x) (if (< 1 x) (+ x 1) (+ x 2))) (1 2 3)))
-
-    (define b 10)
-    (define r (lambda (x) (+ x b)))
-    (print (r (1)))
+    (define foo (lambda (x) (+ 1 x)))
+    (define a (map (lambda (x) (
+        if (< 2 (foo x)) (+ x 1) (+ x 2)))
+    (1 10 3)))
 
     (print a)
 
     (define fib (lambda (x) (
-        if (< x 2) 0 (fib (- x 1))
+        if (< x 2) 1 (+ (fib (- x 1)) (fib (- x 2)))
     )))
 
-    (fib (5))
+    (print (fib 1))
+
+    (define f (map (lambda (x) (begin
+        (define bar (begin (foo x)))
+        (+ bar 1)
+    ))
+    (9)))
+
+    (print f)
 )

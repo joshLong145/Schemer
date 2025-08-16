@@ -178,7 +178,7 @@ impl SymbolicExpression {
         value: Vec<SymbolicExpression>,
         env: &HashMap<
             String,
-            Box<dyn Fn(RLispSubSymbolicExpressions) -> Result<SymbolicExpression, String>>,
+            Box<dyn Fn(RLispSubSymbolicExpressions, &mut HashMap<String, SymbolicExpression>) -> Result<SymbolicExpression, String>>,
         >,
     ) -> Result<Proc, String> {
         let exp = value[0].clone();
