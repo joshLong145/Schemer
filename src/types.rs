@@ -34,6 +34,7 @@ pub type AtomToken = String;
 pub enum SymbolicExpression {
     Atom(AtomToken),
     List(RLispSubSymbolicExpressions),
+    ListExpr(RLispSubSymbolicExpressions),
     Lambda(RLispSubSymbolicExpressions),
 }
 
@@ -43,8 +44,8 @@ impl TryFrom<SymbolicExpression> for AtomToken {
     fn try_from(value: SymbolicExpression) -> Result<Self, Self::Error> {
         return match value {
             SymbolicExpression::Atom(exp) => Ok(exp),
-            SymbolicExpression::List(_) => Err("Invalid cast atom"),
-            SymbolicExpression::Lambda(_) => Err("Invalid cast atom"),
+            _ => Err("Invalid cast"),
+
         };
     }
 }
@@ -54,9 +55,9 @@ impl TryFrom<SymbolicExpression> for RLispSubSymbolicExpressions {
 
     fn try_from(value: SymbolicExpression) -> Result<Self, Self::Error> {
         return match value {
-            SymbolicExpression::Atom(_) => Err("Invalid cast list"),
             SymbolicExpression::List(l) => Ok(l),
             SymbolicExpression::Lambda(la) => Ok(la),
+            _ => Err("Invalid casta"),
         };
     }
 }
@@ -103,6 +104,16 @@ impl Display for SymbolicExpression {
                 }
                 write!(f, ")")
             }
+            SymbolicExpression::ListExpr(sub_exprs) => {
+                write!(f, "(")?;
+                for (i, expr) in sub_exprs.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "{}", expr)?;
+                }
+                write!(f, ")")
+            }
             SymbolicExpression::Lambda(sub_exprs) => {
                 write!(f, "(")?;
                 for (i, expr) in sub_exprs.iter().enumerate() {
@@ -122,6 +133,7 @@ impl Debug for SymbolicExpression {
         match self {
             Self::Atom(arg0) => f.debug_tuple("Atom").field(arg0).finish(),
             Self::List(arg0) => f.debug_tuple("List").field(arg0).finish(),
+            Self::ListExpr(arg0) => f.debug_tuple("List").field(arg0).finish(),
             Self::Lambda(arg0) => f.debug_tuple("Lambda").field(arg0).finish(),
         }
     }
@@ -132,6 +144,7 @@ impl SymbolicExpression {
         match self {
             SymbolicExpression::Atom(_) => None,
             SymbolicExpression::List(vec) => Some(vec[0].clone()),
+            SymbolicExpression::ListExpr(vec) => Some(vec[0].clone()),
             SymbolicExpression::Lambda(la) => Some(la[0].clone()),
         }
     }
@@ -180,7 +193,7 @@ impl SymbolicExpression {
             String,
             Box<dyn Fn(RLispSubSymbolicExpressions, &mut HashMap<String, SymbolicExpression>) -> Result<SymbolicExpression, String>>,
         >,
-    ) -> Result<Proc, String> {
+    ) -> Result<Proc<'_>, String> {
         let exp = value[0].clone();
         match exp {
             SymbolicExpression::Atom(exp) => {
@@ -201,7 +214,10 @@ impl SymbolicExpression {
                 Err("".to_string())
             }
             SymbolicExpression::List(_) => {
-                return Err("".to_string());
+                return Err("cannot convert list to proc".to_string());
+            }
+            SymbolicExpression::ListExpr(_) => {
+                return Err("cannot convert expr list to proc".to_string());
             }
             SymbolicExpression::Lambda(la) => {
                 let body = value[2].clone();

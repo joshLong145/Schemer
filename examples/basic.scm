@@ -4,19 +4,15 @@
         if (< 2 (foo x)) (+ x 1) (+ x 2)))
     (1 10 3)))
 
-    (print a)
-
     (define fib (lambda (x) (
         if (< x 2) 1 (+ (fib (- x 1)) (fib (- x 2)))
     )))
 
-    (print (fib 1))
+    (display (fib 20))
 
-    (define f (map (lambda (x) (begin
-        (define bar (begin (foo x)))
-        (+ bar 1)
-    ))
-    (9)))
+    (display (eval a))
 
-    (print f)
+    (define test '(a 2 3))
+    (display (eval test))
+    (display (list 1 2 3))
 )

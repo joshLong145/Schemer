@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 
 use schemer::env::std_env;
 use schemer::eval::eval;
-use schemer::lisp;
+
 use schemer::parser::{parse, read_from_tokens};
 use schemer::types::SymbolicExpression;
 
@@ -108,7 +108,7 @@ fn parse_and_eval_list_append_and_print_proc() {
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
     let mut token_map = parse(
-        "(begin (print (append (1 2) (+ 1 1))))".to_string(),
+        "(begin (display (append (1 2) (+ 1 1))))".to_string(),
         &mut exp_map,
     );
     let exp = read_from_tokens(&mut token_map).unwrap();
@@ -296,4 +296,24 @@ fn parse_and_eval_procedure_call_as_procedure_arg() {
 
     //debug!("expressions: {:?}", exp);
     assert_eq!(res, SymbolicExpression::Atom("4".to_string()))
+}
+
+
+#[test]
+fn parse_and_eval_map_with_function_symbol() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse(
+        "(begin (define foo (lambda (x) (+ 1 x))) (define f (map foo (9))) f)".to_string(),
+        &mut exp_map,
+    );
+    let exp = read_from_tokens(&mut token_map).unwrap();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
+    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+
+    //debug!("expressions: {:?}", exp);
+    assert_eq!(res, SymbolicExpression::List(vec![SymbolicExpression::Atom("10".to_string())]));
 }
