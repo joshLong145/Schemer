@@ -8,7 +8,7 @@
         if (< x 2) 1 (+ (fib (- x 1)) (fib (- x 2)))
     )))
 
-    (display (fib 20))
+    (display (fib 3))
 
     (display (eval a))
 
