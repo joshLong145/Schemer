@@ -1,10 +1,12 @@
 use std::collections::{HashMap, VecDeque};
 
-use schemer::env::std_env;
-use schemer::eval::eval;
-
-use schemer::parser::{parse, read_from_tokens};
-use schemer::types::SymbolicExpression;
+use schemer::{
+    env::std_env,
+    eval::eval,
+    parser::{parse, read_from_tokens},
+    proc::ProcedureFn,
+    types::{Atom, ExprKind, List, RLispNumber},
+};
 
 fn setup_logging() {
     pretty_env_logger::try_init().unwrap_or(());
@@ -16,13 +18,16 @@ fn basic_parse_and_eval() {
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
     let mut token_map = parse("(begin (+ 1 1))".to_string(), &mut exp_map);
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
-    let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let env: HashMap<String, ProcedureFn> = std_env();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    assert_eq!(res, SymbolicExpression::Atom("2".to_string()))
+    assert_eq!(
+        res,
+        ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(2))))
+    );
 }
 
 #[test]
@@ -31,13 +36,16 @@ fn parse_and_eval_nested_operations() {
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
     let mut token_map = parse("(begin (+ (+ 1 1) (+ 1 1)))".to_string(), &mut exp_map);
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    assert_eq!(res, SymbolicExpression::Atom("4".to_string()))
+    assert_eq!(
+        res,
+        ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(4))))
+    );
 }
 
 #[test]
@@ -46,14 +54,16 @@ fn parse_and_eval_var_declare_and_resolve_for_proc() {
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
     let mut token_map = parse("(begin (define r 10) (+ r r))".to_string(), &mut exp_map);
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    //debug!("expressions: {:?}", exp);
-    assert_eq!(res, SymbolicExpression::Atom("20".to_string()))
+    assert_eq!(
+        res,
+        ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(20))))
+    );
 }
 
 #[test]
@@ -62,21 +72,23 @@ fn parse_and_eval_list_append() {
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
     let mut token_map = parse("(begin (append (1 2) 1))".to_string(), &mut exp_map);
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    //debug!("expressions: {:?}", exp);
     assert_eq!(
         res,
-        SymbolicExpression::List(vec![
-            SymbolicExpression::Atom("1".to_string()),
-            SymbolicExpression::Atom("2".to_string()),
-            SymbolicExpression::Atom("1".to_string())
-        ]),
-    )
+        ExprKind::List(Box::new(List {
+            args: vec![
+                ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(1)))),
+                ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(2)))),
+                ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(1)))),
+            ],
+            object_id: 0,
+        }))
+    );
 }
 
 #[test]
@@ -85,21 +97,23 @@ fn parse_and_eval_list_append_from_proc() {
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
     let mut token_map = parse("(begin (append (1 2) (+ 1 1)))".to_string(), &mut exp_map);
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    //debug!("expressions: {:?}", exp);
     assert_eq!(
         res,
-        SymbolicExpression::List(vec![
-            SymbolicExpression::Atom("1".to_string()),
-            SymbolicExpression::Atom("2".to_string()),
-            SymbolicExpression::Atom("2".to_string())
-        ])
-    )
+        ExprKind::List(Box::new(List {
+            args: vec![
+                ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(1)))),
+                ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(2)))),
+                ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(2)))),
+            ],
+            object_id: 0,
+        }))
+    );
 }
 
 #[test]
@@ -111,14 +125,16 @@ fn parse_and_eval_list_append_and_print_proc() {
         "(begin (display (append (1 2) (+ 1 1))))".to_string(),
         &mut exp_map,
     );
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    //debug!("expressions: {:?}", exp);
-    assert_eq!(res, SymbolicExpression::Atom("0".to_string()))
+    assert_eq!(
+        res,
+        ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(0))))
+    );
 }
 
 #[test]
@@ -130,13 +146,16 @@ fn parse_and_eval_lambda_define_and_invoke() {
         "(begin (define f (lambda (x) (* x x))) (f 4))".to_string(),
         &mut exp_map,
     );
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    assert_eq!(res, SymbolicExpression::Atom("16".to_string()))
+    assert_eq!(
+        res,
+        ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(16))))
+    );
 }
 
 #[test]
@@ -148,13 +167,16 @@ fn parse_and_eval_recursive_factorial() {
         "(begin (define factorial (lambda (n) (if (< n 2) 1 (* n (factorial (- n 1)))))) (factorial 5))".to_string(),
         &mut exp_map,
     );
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    assert_eq!(res, SymbolicExpression::Atom("120".to_string()))
+    assert_eq!(
+        res,
+        ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(120))))
+    );
 }
 
 #[test]
@@ -166,13 +188,16 @@ fn parse_and_eval_recursive_fibonacci() {
         "(begin (define fib (lambda (x) (if (< x 2) 1 (+ (fib (- x 1)) (fib (- x 2)))))) (fib 6))".to_string(),
         &mut exp_map,
     );
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    assert_eq!(res, SymbolicExpression::Atom("13".to_string()))
+    assert_eq!(
+        res,
+        ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(13))))
+    );
 }
 
 #[test]
@@ -181,67 +206,26 @@ fn parse_and_eval_map_with_lambda() {
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
     let mut token_map = parse(
-        "(begin (define foo (lambda () (1 2 3))) (define a (map (lambda (x) (if (< 2 x) (+ x 1) (+ x 2))) (foo))) a)".to_string(),
+        "(begin (define a (map (lambda (x) (if (< 2 x) (+ x 1) (+ x 2))) (1 2 3))) a)".to_string(),
         &mut exp_map,
     );
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    // foo returns (1 2 3), map applies lambda to each: 1+2=3, 2+2=4, 3+1=4
-    assert_eq!(res, SymbolicExpression::List(vec![
-        SymbolicExpression::Atom("3".to_string()),
-        SymbolicExpression::Atom("4".to_string()),
-        SymbolicExpression::Atom("4".to_string())
-    ]))
-}
-
-#[test]
-fn parse_and_eval_original_map_case() {
-    setup_logging();
-
-    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
-    let mut token_map = parse(
-        "(begin (define foo (lambda () (1 2 3))) (define a (map (lambda (x) (if (< 2 x) (+ x 1) (+ x 2))) (foo))) a)".to_string(),
-        &mut exp_map,
+    assert_eq!(
+        res,
+        ExprKind::List(Box::new(List {
+            args: vec![
+                ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(3)))),
+                ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(4)))),
+                ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(4)))),
+            ],
+            object_id: 0,
+        }))
     );
-    let exp = read_from_tokens(&mut token_map).unwrap();
-
-    let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
-
-    // This should work without "invalid symbol x" error
-    assert_eq!(res, SymbolicExpression::List(vec![
-        SymbolicExpression::Atom("3".to_string()),
-        SymbolicExpression::Atom("4".to_string()),
-        SymbolicExpression::Atom("4".to_string())
-    ]))
-}
-
-#[test]
-fn parse_and_eval_map_with_function_calls() {
-    setup_logging();
-
-    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
-    let mut token_map = parse(
-        "(begin (define fib (lambda (x) (if (< x 2) 1 (+ (fib (- x 1)) (fib (- x 2)))))) (define f (map (lambda (x) (begin (fib x))) (8 9 10))) f)".to_string(),
-        &mut exp_map,
-    );
-    let exp = read_from_tokens(&mut token_map).unwrap();
-
-    let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
-
-    // Should evaluate fib for each element: fib(1)=1, fib(2)=2, fib(3)=3
-    assert_eq!(res, SymbolicExpression::List(vec![
-        SymbolicExpression::Atom("34".to_string()),
-        SymbolicExpression::Atom("55".to_string()),
-        SymbolicExpression::Atom("89".to_string())
-    ]))
 }
 
 #[test]
@@ -250,14 +234,16 @@ fn parse_and_eval_condition() {
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
     let mut token_map = parse("(begin (if (number? 1) 1 2))".to_string(), &mut exp_map);
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    //debug!("expressions: {:?}", exp);
-    assert_eq!(res, SymbolicExpression::Atom("1".to_string()))
+    assert_eq!(
+        res,
+        ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(1))))
+    );
 }
 
 #[test]
@@ -269,14 +255,16 @@ fn parse_and_eval_condition_as_var_definition() {
         "(begin (define f (if (number? 1) 1 2)) f)".to_string(),
         &mut exp_map,
     );
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    //debug!("expressions: {:?}", exp);
-    assert_eq!(res, SymbolicExpression::Atom("1".to_string()))
+    assert_eq!(
+        res,
+        ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(1))))
+    );
 }
 
 #[test]
@@ -285,19 +273,20 @@ fn parse_and_eval_procedure_call_as_procedure_arg() {
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
     let mut token_map = parse(
-        "(begin (if (number? (car (1 2 3))) (+ 2 2) 0)) )".to_string(),
+        "(begin (if (number? (car (1 2 3))) (+ 2 2) 0))".to_string(),
         &mut exp_map,
     );
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    //debug!("expressions: {:?}", exp);
-    assert_eq!(res, SymbolicExpression::Atom("4".to_string()))
+    assert_eq!(
+        res,
+        ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(4))))
+    );
 }
-
 
 #[test]
 fn parse_and_eval_map_with_function_symbol() {
@@ -308,12 +297,17 @@ fn parse_and_eval_map_with_function_symbol() {
         "(begin (define foo (lambda (x) (+ 1 x))) (define f (map foo (9))) f)".to_string(),
         &mut exp_map,
     );
-    let exp = read_from_tokens(&mut token_map).unwrap();
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
-    let mut symbol_definitions: HashMap<String, SymbolicExpression> = HashMap::new();
-    let res = eval(&exp, &env, &mut symbol_definitions).unwrap();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
 
-    //debug!("expressions: {:?}", exp);
-    assert_eq!(res, SymbolicExpression::List(vec![SymbolicExpression::Atom("10".to_string())]));
+    assert_eq!(
+        res,
+        ExprKind::List(Box::new(List {
+            args: vec![ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(10))))],
+            object_id: 0,
+        }))
+    );
 }

@@ -29,7 +29,7 @@ impl NumericOps for Atom {
             }
             Atom::Bool(_) => {
                 return Err("invalid expression".into());
-            } 
+            }
         };
 
         l.add(r)
@@ -55,7 +55,7 @@ impl NumericOps for Atom {
             }
         };
 
-        r.sub(l)
+        l.sub(r)
     }
 
     fn mul(&self, val: Atom) -> Result<SymbolicExpression, String> {
@@ -183,9 +183,9 @@ impl RLispNumber {
     }
 }
 
-impl PartialOrd for Atom { 
+impl PartialOrd for Atom {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-       
+
         if self == other {
             return Some(Ordering::Equal);
         }
@@ -201,7 +201,7 @@ impl PartialOrd for Atom {
             (Atom::Bool(_), Atom::Symbol(_)) => todo!(),
             (Atom::Bool(_), Atom::Bool(_)) => todo!(),
         }
-        
+
     }
 }
 
@@ -219,7 +219,7 @@ impl PartialEq for RLispNumber {
 impl PartialOrd for RLispNumber {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         let lhs = match self {
-            RLispNumber::Int(i) => *i as f32, 
+            RLispNumber::Int(i) => *i as f32,
             RLispNumber::Float(f) => f.to_owned(),
         };
 

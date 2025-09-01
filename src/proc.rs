@@ -1,52 +1,174 @@
 use std::collections::HashMap;
+use std::fmt::{self, Display, Formatter};
 
 use crate::{
     eval::eval,
-    types::{RLispSubSymbolicExpressions, SymbolicExpression},
+    types::{Atom, ExprKind},
 };
 
+pub type ProcedureFn = Box<dyn Fn(Vec<ExprKind>, &mut HashMap<String, ExprKind>) -> Result<ExprKind, String>>;
+
 pub struct Proc<'a> {
-    pub params: HashMap<String, SymbolicExpression>,
-    pub signature: SymbolicExpression,
-    pub body: SymbolicExpression,
-    pub env: &'a HashMap<
-        String,
-        Box<dyn Fn(RLispSubSymbolicExpressions, &mut HashMap<String, SymbolicExpression>) -> Result<SymbolicExpression, String>>,
-    >,
+    pub params: HashMap<String, ExprKind>,
+    pub signature: ExprKind,
+    pub body: ExprKind,
+    pub env: &'a HashMap<String, ProcedureFn>,
 }
 
-impl std::fmt::Display for Proc<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let fmt_str = format!(
+impl Display for Proc<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
             "\nsignature {}\nparameters {}\nbody {}",
             self.signature,
-            self.params.clone().into_keys().collect::<String>(),
+            self.params
+                .keys()
+                .fold(String::new(), |acc, key| acc + " " + key),
             self.body
-        );
-        write!(f, "{}", fmt_str)
+        )
     }
 }
 
 pub trait Eval {
     fn proc_eval(
         &self,
-        symbol_definitions: &mut HashMap<String, SymbolicExpression>,
-    ) -> Result<SymbolicExpression, String>;
+        symbol_definitions: &mut HashMap<String, ExprKind>,
+    ) -> Result<ExprKind, String>;
 }
 
 impl Eval for Proc<'_> {
     fn proc_eval(
         &self,
-        symbol_definitions: &mut HashMap<String, SymbolicExpression>,
-    ) -> Result<SymbolicExpression, String> {
-        let mut local_symbols: HashMap<String, SymbolicExpression> = HashMap::new();
+        symbol_definitions: &mut HashMap<String, ExprKind>,
+    ) -> Result<ExprKind, String> {
+        // Create a new environment for this procedure call
+        let mut local_symbols = HashMap::new();
 
-        // Add all existing symbol definitions (including recursive function definitions)
+        // Add all existing symbol definitions for closure access
         local_symbols.extend(symbol_definitions.clone());
 
-        // Override with parameter bindings
+        // Add parameter bindings to the local environment
         local_symbols.extend(self.params.clone());
 
-        eval(&self.body, self.env, &mut local_symbols)
+        // Pattern match on the signature to ensure proper binding
+        match &self.signature {
+            ExprKind::List(list) => {
+                // List of parameters - validate each one is bound
+                for param in list.args.iter() {
+                    match param {
+                        ExprKind::Atom(atom) => match atom.as_ref() {
+                            Atom::Symbol(s) => {
+                                if !local_symbols.contains_key(s) {
+                                    return Err(format!("unbound parameter: {}", s));
+                                }
+                            }
+                            _ => return Err("invalid parameter type".to_string()),
+                        },
+                        _ => return Err("parameters must be symbols".to_string()),
+                    }
+                }
+            }
+            ExprKind::Atom(atom) => match atom.as_ref() {
+                Atom::Symbol(s) => {
+                    if !local_symbols.contains_key(s) {
+                        return Err(format!("unbound parameter: {}", s));
+                    }
+                }
+                _ => return Err("invalid parameter type".to_string()),
+            },
+            _ => return Err("invalid parameter specification".to_string()),
+        }
+
+        eval(self.body.clone(), self.env, &mut local_symbols)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::types::{List, RLispNumber};
+
+    use super::*;
+
+    #[test]
+    fn test_proc_eval_simple() {
+        let env = HashMap::new();
+        let mut symbol_defs = HashMap::new();
+        let mut params = HashMap::new();
+
+        // Create a simple procedure that returns a number
+        params.insert(
+            "x".to_string(),
+            ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(42)))),
+        );
+
+        let proc = Proc {
+            params,
+            signature: ExprKind::Atom(Box::new(Atom::Symbol("x".to_string()))),
+            body: ExprKind::Atom(Box::new(Atom::Symbol("x".to_string()))),
+            env: &env,
+        };
+
+        let result = proc.proc_eval(&mut symbol_defs).unwrap();
+        match result {
+            ExprKind::Atom(atom) => match *atom {
+                Atom::Number(RLispNumber::Int(n)) => assert_eq!(n, 42),
+                _ => panic!("expected integer"),
+            },
+            _ => panic!("expected atom"),
+        }
+    }
+
+    #[test]
+    fn test_proc_eval_with_closure() {
+        let env = HashMap::new();
+        let mut symbol_defs = HashMap::new();
+        let mut params = HashMap::new();
+
+        // Add a value to the outer scope
+        symbol_defs.insert(
+            "y".to_string(),
+            ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(10)))),
+        );
+
+        // Create a procedure that references both a parameter and a closed-over value
+        params.insert(
+            "x".to_string(),
+            ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(5)))),
+        );
+
+        let proc = Proc {
+            params,
+            signature: ExprKind::Atom(Box::new(Atom::Symbol("x".to_string()))),
+            body: ExprKind::List(Box::new(List {
+                args: vec![
+                    ExprKind::Atom(Box::new(Atom::Symbol("x".to_string()))),
+                    ExprKind::Atom(Box::new(Atom::Symbol("y".to_string()))),
+                ],
+                object_id: 0,
+            })),
+            env: &env,
+        };
+
+        let result = proc.proc_eval(&mut symbol_defs).unwrap();
+        match result {
+            ExprKind::List(list) => {
+                assert_eq!(list.args.len(), 2);
+                match &list.args[0] {
+                    ExprKind::Atom(atom) => match atom.as_ref() {
+                        Atom::Number(RLispNumber::Int(n)) => assert_eq!(*n, 5),
+                        _ => panic!("expected integer"),
+                    },
+                    _ => panic!("expected atom"),
+                }
+                match &list.args[1] {
+                    ExprKind::Atom(atom) => match atom.as_ref() {
+                        Atom::Number(RLispNumber::Int(n)) => assert_eq!(*n, 10),
+                        _ => panic!("expected integer"),
+                    },
+                    _ => panic!("expected atom"),
+                }
+            }
+            _ => panic!("expected list"),
+        }
     }
 }

@@ -5,5 +5,5 @@
             (+ (fib (- x 1)) (fib (- x 2)))
     )))
 
-    (display (fib 16))
+    (display (fib 14))
 )
