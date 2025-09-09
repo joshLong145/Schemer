@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 
+#[cfg(test)]
+use std::sync::Arc;
+
 use crate::{
     eval::eval,
     types::{Atom, ExprKind},
@@ -98,20 +101,20 @@ mod tests {
         // Create a simple procedure that returns a number
         params.insert(
             "x".to_string(),
-            ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(42)))),
+            ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(42)))),
         );
 
         let proc = Proc {
             params,
-            signature: ExprKind::Atom(Box::new(Atom::Symbol("x".to_string()))),
-            body: ExprKind::Atom(Box::new(Atom::Symbol("x".to_string()))),
+            signature: ExprKind::Atom(Arc::new(Atom::Symbol("x".to_string()))),
+            body: ExprKind::Atom(Arc::new(Atom::Symbol("x".to_string()))),
             env: &env,
         };
 
         let result = proc.proc_eval(&mut symbol_defs).unwrap();
         match result {
-            ExprKind::Atom(atom) => match *atom {
-                Atom::Number(RLispNumber::Int(n)) => assert_eq!(n, 42),
+            ExprKind::Atom(atom) => match atom.as_ref() {
+                Atom::Number(RLispNumber::Int(n)) => assert_eq!(*n, 42),
                 _ => panic!("expected integer"),
             },
             _ => panic!("expected atom"),
@@ -127,22 +130,22 @@ mod tests {
         // Add a value to the outer scope
         symbol_defs.insert(
             "y".to_string(),
-            ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(10)))),
+            ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(10)))),
         );
 
         // Create a procedure that references both a parameter and a closed-over value
         params.insert(
             "x".to_string(),
-            ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(5)))),
+            ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(5)))),
         );
 
         let proc = Proc {
             params,
-            signature: ExprKind::Atom(Box::new(Atom::Symbol("x".to_string()))),
-            body: ExprKind::List(Box::new(List {
+            signature: ExprKind::Atom(Arc::new(Atom::Symbol("x".to_string()))),
+            body: ExprKind::List(Arc::new(List {
                 args: vec![
-                    ExprKind::Atom(Box::new(Atom::Symbol("x".to_string()))),
-                    ExprKind::Atom(Box::new(Atom::Symbol("y".to_string()))),
+                    ExprKind::Atom(Arc::new(Atom::Symbol("x".to_string()))),
+                    ExprKind::Atom(Arc::new(Atom::Symbol("y".to_string()))),
                 ],
                 object_id: 0,
             })),

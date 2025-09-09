@@ -5,7 +5,7 @@ use crate::{
         Atom, Begin, Define, ExprKind, If, Lambda, List, RLispBoolean,
     }
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 type ProcedureFn = Box<dyn Fn(Vec<ExprKind>, &mut HashMap<String, ExprKind>) -> Result<ExprKind, String>>;
 
@@ -14,7 +14,7 @@ pub fn eval(
     env: &HashMap<String, ProcedureFn>,
     symbol_definitions: &mut HashMap<String, ExprKind>,
 ) -> Result<ExprKind, String> {
-    debug!("evaluating expression: {:?}", expression);
+    debug!("evaluating expression: {}", expression);
     match expression {
         ExprKind::Atom(atom) => {
             match *atom {
@@ -28,11 +28,11 @@ pub fn eval(
                 }
             }
         }
-        ExprKind::Define(define) => eval_define(*define, env, symbol_definitions),
-        ExprKind::If(if_expr) => eval_if(*if_expr, env, symbol_definitions),
-        ExprKind::Begin(begin) => eval_begin(*begin, env, symbol_definitions),
-        ExprKind::Lambda(lambda) => eval_lambda(*lambda, env, symbol_definitions),
-        ExprKind::List(list) => eval_list(*list, env, symbol_definitions),
+        ExprKind::Define(define) => eval_define(Arc::try_unwrap(define).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
+        ExprKind::If(if_expr) => eval_if(Arc::try_unwrap(if_expr).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
+        ExprKind::Begin(begin) => eval_begin(Arc::try_unwrap(begin).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
+        ExprKind::Lambda(lambda) => eval_lambda(Arc::try_unwrap(lambda).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
+        ExprKind::List(list) => eval_list(Arc::try_unwrap(list).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
         ExprKind::Quote(quote) => Ok(ExprKind::Quote(quote)),
     }
 }
@@ -43,7 +43,7 @@ fn eval_define(
     symbol_definitions: &mut HashMap<String, ExprKind>,
 ) -> Result<ExprKind, String> {
     let name = match define.name {
-        ExprKind::Atom(atom) => match *atom {
+        ExprKind::Atom(atom) => match Arc::try_unwrap(atom).unwrap_or_else(|arc| (*arc).clone()) {
             Atom::Symbol(s) => s,
             _ => return Err("define: name must be a symbol".to_string()),
         },
@@ -53,7 +53,7 @@ fn eval_define(
     let value = eval(define.body, env, symbol_definitions)?;
     symbol_definitions.insert(name.clone(), value);
 
-    Ok(ExprKind::Atom(Box::new(Atom::Symbol(name))))
+    Ok(ExprKind::Atom(Arc::new(Atom::Symbol(name))))
 }
 
 fn eval_if(
@@ -80,7 +80,7 @@ fn eval_begin(
     env: &HashMap<String, ProcedureFn>,
     symbol_definitions: &mut HashMap<String, ExprKind>,
 ) -> Result<ExprKind, String> {
-    let mut result = ExprKind::Atom(Box::new(Atom::Symbol("()".to_string())));
+    let mut result = ExprKind::Atom(Arc::new(Atom::Symbol("()".to_string())));
 
     for expr in begin.exprs {
         result = eval(expr, env, symbol_definitions)?;
@@ -95,7 +95,7 @@ fn eval_lambda(
     _: &mut HashMap<String, ExprKind>,
 ) -> Result<ExprKind, String> {
     debug!("returning lambda {:?}", lambda);
-    Ok(ExprKind::Lambda(Box::new(lambda)))
+    Ok(ExprKind::Lambda(Arc::new(lambda)))
 }
 
 fn eval_list(
@@ -104,7 +104,7 @@ fn eval_list(
     symbol_definitions: &mut HashMap<String, ExprKind>,
 ) -> Result<ExprKind, String> {
     if list.args.is_empty() {
-        return Ok(ExprKind::List(Box::new(list)));
+        return Ok(ExprKind::List(Arc::new(list)));
     }
 
     let mut evaluated_args = Vec::new();
@@ -148,7 +148,7 @@ fn eval_list(
         evaluated_args.push(evaluated);
     }
     debug!("resulting list {:?}", evaluated_args);
-    Ok(ExprKind::List(Box::new(List {
+    Ok(ExprKind::List(Arc::new(List {
         args: evaluated_args,
         object_id: list.object_id,
     })))
@@ -166,15 +166,15 @@ pub fn resolve_symbol_if_present(
             }
             _ => expr.clone(),
         },
-        ExprKind::List(list) => ExprKind::List(Box::new(List {
+        ExprKind::List(list) => ExprKind::List(Arc::new(List {
             args: list
                 .args
                 .iter()
-                .map(|arg| resolve_symbol_if_present(arg, symbol_definitions, env))
+                .map(|e| resolve_symbol_if_present(e, symbol_definitions, env))
                 .collect(),
             object_id: list.object_id,
         })),
-        ExprKind::Lambda(lambda) => ExprKind::Lambda(Box::new(Lambda {
+        ExprKind::Lambda(lambda) => ExprKind::Lambda(Arc::new(Lambda {
             args: lambda.args.clone(),
             body: resolve_symbol_if_present(&lambda.body, symbol_definitions, env),
             object_id: lambda.object_id,

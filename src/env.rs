@@ -5,13 +5,13 @@ use crate::{
         Atom, ExprKind, List, Quote, RLispBoolean, RLispNumber, SymbolicExpression
     }
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 pub fn std_const_exp() -> HashMap<String, ExprKind> {
     let mut const_exps = HashMap::new();
     const_exps.insert(
         "pi".to_string(),
-        ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Float(3.14)))),
+        ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Float(3.14)))),
     );
     const_exps
 }
@@ -40,7 +40,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             };
 
             match l.add(r)? {
-                SymbolicExpression::Atom(a) => Ok(ExprKind::Atom(Box::new(Atom::from(a)))),
+                SymbolicExpression::Atom(a) => Ok(ExprKind::Atom(Arc::new(Atom::from(a)))),
                 _ => Err("invalid addition result".to_string()),
             }
         }),
@@ -64,7 +64,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             };
 
             match l.sub(r)? {
-                SymbolicExpression::Atom(a) => Ok(ExprKind::Atom(Box::new(Atom::from(a)))),
+                SymbolicExpression::Atom(a) => Ok(ExprKind::Atom(Arc::new(Atom::from(a)))),
                 _ => Err("invalid subtraction result".to_string()),
             }
         }),
@@ -88,7 +88,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             };
 
             match l.mul(r)? {
-                SymbolicExpression::Atom(a) => Ok(ExprKind::Atom(Box::new(Atom::from(a)))),
+                SymbolicExpression::Atom(a) => Ok(ExprKind::Atom(Arc::new(Atom::from(a)))),
                 _ => Err("invalid multiplication result".to_string()),
             }
         }),
@@ -112,7 +112,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             };
 
             match l.div(r)? {
-                SymbolicExpression::Atom(a) => Ok(ExprKind::Atom(Box::new(Atom::from(a)))),
+                SymbolicExpression::Atom(a) => Ok(ExprKind::Atom(Arc::new(Atom::from(a)))),
                 _ => Err("invalid division result".to_string()),
             }
         }),
@@ -132,7 +132,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             };
             args.push(exp[1].clone());
 
-            Ok(ExprKind::List(Box::new(List {
+            Ok(ExprKind::List(Arc::new(List {
                 args,
                 object_id: 0,
             })))
@@ -156,7 +156,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             for expr in exp.iter() {
                 println!("{}", expr);
             }
-            Ok(ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(0)))))
+            Ok(ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(0)))))
         }),
     );
 
@@ -170,10 +170,10 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
 
             match &exp[0] {
                 ExprKind::Atom(a) => match a.as_ref() {
-                    Atom::Number(_) => Ok(ExprKind::Atom(Box::new(Atom::Bool(RLispBoolean::True(true))))),
-                    _ => Ok(ExprKind::Atom(Box::new(Atom::Bool(RLispBoolean::False(false))))),
+                    Atom::Number(_) => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(true))))),
+                    _ => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(false))))),
                 },
-                _ => Ok(ExprKind::Atom(Box::new(Atom::Bool(RLispBoolean::False(false))))),
+                _ => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(false))))),
             }
         }),
     );
@@ -186,8 +186,8 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             }
 
             match &exp[0] {
-                ExprKind::List(_) => Ok(ExprKind::Atom(Box::new(Atom::Bool(RLispBoolean::True(true))))),
-                _ => Ok(ExprKind::Atom(Box::new(Atom::Bool(RLispBoolean::False(false))))),
+                ExprKind::List(_) => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(true))))),
+                _ => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(false))))),
             }
         }),
     );
@@ -201,10 +201,10 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
 
             match &exp[0] {
                 ExprKind::Atom(a) => match a.as_ref() {
-                    Atom::Bool(_) => Ok(ExprKind::Atom(Box::new(Atom::Bool(RLispBoolean::True(true))))),
-                    _ => Ok(ExprKind::Atom(Box::new(Atom::Bool(RLispBoolean::False(false))))),
+                    Atom::Bool(_) => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(true))))),
+                    _ => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(false))))),
                 },
-                _ => Ok(ExprKind::Atom(Box::new(Atom::Bool(RLispBoolean::False(false))))),
+                _ => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(false))))),
             }
         }),
     );
@@ -218,7 +218,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             }
 
             match &exp[0] {
-                ExprKind::List(l) => Ok(ExprKind::Atom(Box::new(Atom::Number(RLispNumber::Int(
+                ExprKind::List(l) => Ok(ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(
                     l.args.len() as i32,
                 ))))),
                 _ => Err("argument must be a list".to_string()),
@@ -258,7 +258,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                     if l.args.len() < 2 {
                         Err("list too short".to_string())
                     } else {
-                        Ok(ExprKind::List(Box::new(List {
+                        Ok(ExprKind::List(Arc::new(List {
                             args: l.args[1..].to_vec(),
                             object_id: 0,
                         })))
@@ -287,7 +287,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                 _ => return Err("invalid expression".to_string()),
             };
 
-            Ok(ExprKind::Atom(Box::new(Atom::Bool(if l < r {
+            Ok(ExprKind::Atom(Arc::new(Atom::Bool(if l < r {
                 RLispBoolean::True(true)
             } else {
                 RLispBoolean::False(false)
@@ -312,7 +312,157 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                 _ => return Err("invalid expression".to_string()),
             };
 
-            Ok(ExprKind::Atom(Box::new(Atom::Bool(if l > r {
+            Ok(ExprKind::Atom(Arc::new(Atom::Bool(if l > r {
+                RLispBoolean::True(true)
+            } else {
+                RLispBoolean::False(false)
+            }))))
+        }),
+    );
+
+    env.insert(
+        "=".to_string(),
+        Box::new(|exp, _| -> Result<ExprKind, String> {
+            if exp.len() < 2 {
+                return Err("> requires at least two arguments".to_string());
+            }
+
+            let l = match &exp[0] {
+                ExprKind::Atom(a) => a.as_ref().clone(),
+                _ => return Err("invalid expression".to_string()),
+            };
+
+            let r = match &exp[1] {
+                ExprKind::Atom(a) => a.as_ref().clone(),
+                _ => return Err("invalid expression".to_string()),
+            };
+
+            Ok(ExprKind::Atom(Arc::new(Atom::Bool(if l == r {
+                RLispBoolean::True(true)
+            } else {
+                RLispBoolean::False(false)
+            }))))
+        }),
+    );
+
+    env.insert(
+        "and".to_string(),
+        Box::new(|exp, _| -> Result<ExprKind, String> {
+            if exp.len() < 2 {
+                return Err("> requires at least two arguments".to_string());
+            }
+
+            let l = match &exp[0] {
+                ExprKind::Atom(a) => {
+                    match *a.to_owned() {
+                        Atom::Bool(ref rlisp_boolean) => {
+                            match rlisp_boolean {
+                                RLispBoolean::True(_) => true,
+                                RLispBoolean::False(_) => false,
+                            }
+                        },
+                        _ => return Err("invalid expression".to_string()),
+                    }
+                },
+
+                _ => return Err("invalid expression".to_string()),
+            };
+
+            let r = match &exp[1] {
+                ExprKind::Atom(a) => {
+                    match *a.to_owned() {
+                        Atom::Bool(ref rlisp_boolean) => {
+                            match rlisp_boolean {
+                                RLispBoolean::True(_) => true,
+                                RLispBoolean::False(_) => false,
+                            }
+                        },
+                        _ => return Err("invalid expression".to_string()),
+                    }
+                },
+
+                _ => return Err("invalid expression".to_string()),
+            };
+
+            Ok(ExprKind::Atom(Arc::new(Atom::Bool(if l && r {
+                RLispBoolean::True(true)
+            } else {
+                RLispBoolean::False(false)
+            }))))
+        }),
+    );
+
+    env.insert(
+        "or".to_string(),
+        Box::new(|exp, _| -> Result<ExprKind, String> {
+            if exp.len() < 2 {
+                return Err("> requires at least two arguments".to_string());
+            }
+
+            let l = match &exp[0] {
+                ExprKind::Atom(a) => {
+                    match *a.to_owned() {
+                        Atom::Bool(ref rlisp_boolean) => {
+                            match rlisp_boolean {
+                                RLispBoolean::True(_) => true,
+                                RLispBoolean::False(_) => false,
+                            }
+                        },
+                        _ => return Err("invalid expression".to_string()),
+                    }
+                },
+
+                _ => return Err("invalid expression".to_string()),
+            };
+
+            let r = match &exp[1] {
+                ExprKind::Atom(a) => {
+                    match *a.to_owned() {
+                        Atom::Bool(ref rlisp_boolean) => {
+                            match rlisp_boolean {
+                                RLispBoolean::True(_) => true,
+                                RLispBoolean::False(_) => false,
+                            }
+                        },
+                        _ => return Err("invalid expression".to_string()),
+                    }
+                },
+
+                _ => return Err("invalid expression".to_string()),
+            };
+
+            Ok(ExprKind::Atom(Arc::new(Atom::Bool(if l || r {
+                RLispBoolean::True(true)
+            } else {
+                RLispBoolean::False(false)
+            }))))
+        }),
+    );
+
+    env.insert(
+        "not".to_string(),
+        Box::new(|exp, _| -> Result<ExprKind, String> {
+            if exp.len() < 1 {
+                return Err("> requires at least two arguments".to_string());
+            }
+
+            let r = match &exp[0] {
+                ExprKind::Atom(a) => {
+                    match *a.to_owned() {
+                        Atom::Bool(ref rlisp_boolean) => {
+                            match rlisp_boolean {
+                                RLispBoolean::True(_) => true,
+                                RLispBoolean::False(_) => false,
+                            }
+                        },
+                        _ => return Err("invalid expression".to_string()),
+                    }
+                },
+
+                _ => return Err("invalid expression".to_string()),
+            };
+
+            Ok(ExprKind::Atom(Arc::new(Atom::Bool(if !r {
                 RLispBoolean::True(true)
             } else {
                 RLispBoolean::False(false)
@@ -324,9 +474,11 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
     env.insert(
         "list".to_string(),
         Box::new(|exp, _| {
-            Ok(ExprKind::List(Box::new(List {
-                args: exp,
-                object_id: 0,
+            Ok(ExprKind::Quote(Arc::new(Quote {
+                expr: ExprKind::List(Arc::new(List {
+                    args: exp,
+                    object_id: 0,
+                })),
             })))
         }),
     );
@@ -357,7 +509,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                 ExprKind::Quote(args) => {
                     match args.expr.clone() {
                         ExprKind::List(l) => {
-                            *l
+                            Arc::try_unwrap(l).unwrap_or_else(|arc| (*arc).clone())
                         },
                         _ => {
                             return Err("Invalid symbolic expression".to_string());
@@ -372,7 +524,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             for arg in args.args.clone() {
                 let proc = ExprKind::to_proc(
                     &ExprKind::Lambda(lambda_func.clone()),
-                    ExprKind::List(Box::new(List{
+                    ExprKind::List(Arc::new(List{
                         args: vec![arg],
                         object_id: 0,
                     })),
@@ -381,13 +533,73 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                 mapping_results.push(result);
             }
 
-            Ok(ExprKind::Quote(Box::new(Quote{
-                expr: ExprKind::List(Box::new(List {
+            Ok(ExprKind::Quote(Arc::new(Quote{
+                expr: ExprKind::List(Arc::new(List {
                     args: mapping_results,
                     object_id: 0,
                 })),
             })))
         }),
     );
+
+
+    env.insert("filter".to_string(),
+        Box::new(|exp, sd| {
+            let env = std_env();
+
+            let lambda_func = match &exp[0] {
+                ExprKind::Lambda(lambda_exp) => lambda_exp.clone(),
+                _ => return Err("First argument to map must be a lambda".to_string()),
+            };
+
+            let args = match &exp[1] {
+                ExprKind::Quote(args) => {
+                    match args.expr.clone() {
+                        ExprKind::List(l) => {
+                            Arc::try_unwrap(l).unwrap_or_else(|arc| (*arc).clone())
+                        },
+                        _ => {
+                            return Err("Invalid symbolic expression".to_string());
+                        }
+                    }
+                }
+                _ => return Err(format!("Second argument to map must be a list expression {:?}", exp[1])),
+            };
+
+            let mut mapping_results: Vec<ExprKind> = Vec::new();
+
+            for arg in args.args.iter() {
+                let proc = ExprKind::to_proc(
+                    &ExprKind::Lambda(lambda_func.clone()),
+                    ExprKind::List(Arc::new(List{
+                        args: vec![arg.clone()],
+                        object_id: 0,
+                    })),
+                    &env).unwrap();
+                let result = proc.proc_eval(sd).unwrap();
+                match result {
+                    ExprKind::Atom(ref atom) => {
+                        if let Atom::Bool(test) = atom.as_ref() {
+                            if let RLispBoolean::True(_) = test {
+                                mapping_results.push(arg.clone());
+                            }
+                        }
+                    },
+
+                    _ => {
+                        return Err("Invalid return from filter predicate".to_string());
+                    }
+                }
+            }
+
+            Ok(ExprKind::Quote(Arc::new(Quote{
+                expr: ExprKind::List(Arc::new(List {
+                    args: mapping_results,
+                    object_id: 0,
+                })),
+            })))
+        })
+    );
+
     env
 }

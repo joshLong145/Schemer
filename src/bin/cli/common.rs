@@ -1,3 +1,4 @@
+use log::debug;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use schemer::env::std_env;
@@ -15,7 +16,7 @@ pub fn repl() -> rustyline::Result<()> {
     let mut rl = DefaultEditor::new()?;
 
     loop {
-        let readline = rl.readline("ƛ >");
+        let readline = rl.readline("ƛ > ");
         match readline {
             Ok(buffer) => {
                 let _ = rl.add_history_entry(buffer.as_str());
@@ -48,8 +49,10 @@ pub fn parse_and_run_scheme(buffer: String) {
     let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
 
     let mut token_map = parse(buffer, &mut exp_map);
-    let exp = read_from_tokens(&mut token_map).unwrap().into();
-    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
-
-    println!("{}", res);
+    while token_map.len() > 0 {
+        let sym_exp = read_from_tokens(&mut token_map).unwrap();
+        let exp = sym_exp.clone().into();
+        let res = eval(exp, &env, &mut symbol_definitions).unwrap();
+        println!("{}", res);
+    }
 }

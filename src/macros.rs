@@ -20,7 +20,7 @@ macro_rules! lisp {
     (-) => {
         $crate::types::SymbolicExpression::Atom(String::from("+"))
     };
-    
+
     (/) => {
         $crate::types::SymbolicExpression::Atom(String::from("+"))
     };

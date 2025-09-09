@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     fmt::{self, Debug, Display, Formatter},
+    sync::Arc,
 };
 
 use log::debug;
@@ -42,13 +43,13 @@ pub enum SymbolicExpression {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExprKind {
-    If(Box<If>),
-    Define(Box<Define>),
-    Begin(Box<Begin>),
-    Lambda(Box<Lambda>),
-    Atom(Box<Atom>),
-    List(Box<List>),
-    Quote(Box<Quote>),
+    If(Arc<If>),
+    Define(Arc<Define>),
+    Begin(Arc<Begin>),
+    Lambda(Arc<Lambda>),
+    Atom(Arc<Atom>),
+    List(Arc<List>),
+    Quote(Arc<Quote>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -152,8 +153,8 @@ impl Display for RLispNumber {
 impl Display for RLispBoolean {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            RLispBoolean::True(b) => write!(f, "{}", b),
-            RLispBoolean::False(b) => write!(f, "{}", b),
+            RLispBoolean::True(_) => write!(f, "#t"),
+            RLispBoolean::False(_) => write!(f, "#f"),
         }
     }
 }
@@ -163,7 +164,12 @@ impl Display for Atom {
         match self {
             Atom::Number(n) => write!(f, "{}", n),
             Atom::Symbol(s) => write!(f, "{}", s),
-            Atom::Bool(b) => write!(f, "{}", b),
+            Atom::Bool(b) => {
+                match b {
+                    RLispBoolean::True(_) => write!(f, "#t"),
+                    RLispBoolean::False(_) => write!(f, "#f"),
+                }
+            },
         }
     }
 }
@@ -210,20 +216,20 @@ impl Display for ExprKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ExprKind::If(if_expr) => {
-                write!(f, "(if\n{}\n{}\n{})", if_expr.test_expr, if_expr.then_expr, if_expr.else_expr)
+                write!(f, "(\nif \n{} \n{} \n{}\n)", if_expr.test_expr, if_expr.then_expr, if_expr.else_expr)
             }
             ExprKind::Define(define_expr) => {
-                write!(f, "(define {} {})", define_expr.name, define_expr.body)
+                write!(f, "\n(\ndefine {}\n\t{}\n)", define_expr.name, define_expr.body)
             }
             ExprKind::Begin(begin_expr) => {
-                write!(f, "(begin")?;
+                write!(f, "\n(\nbegin")?;
                 for expr in begin_expr.exprs.iter() {
-                    write!(f, "\n\t{}\n", expr)?;
+                    write!(f, "\n{}\n", expr)?;
                 }
                 write!(f, ")")
             }
             ExprKind::Lambda(lambda_expr) => {
-                write!(f, "(lambda\n\t{}\n{})", lambda_expr.args, lambda_expr.body)
+                write!(f, "(\nlambda\n{}\n{}\n)", lambda_expr.args, lambda_expr.body)
             }
             ExprKind::Atom(atom_expr) => {
                 write!(f, "{}", atom_expr)
@@ -257,8 +263,8 @@ impl Debug for RLispNumber {
 impl Debug for RLispBoolean {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::True(arg0) => f.debug_tuple("True").field(arg0).finish(),
-            Self::False(arg0) => f.debug_tuple("False").field(arg0).finish(),
+            Self::True(arg0) => f.debug_tuple("#t").field(arg0).finish(),
+            Self::False(arg0) => f.debug_tuple("#f").field(arg0).finish(),
         }
     }
 }
@@ -302,12 +308,10 @@ impl From<&String> for Atom {
             Atom::Number(RLispNumber::Int(a))
         } else if let Ok(a) = value.parse::<f32>() {
             Atom::Number(RLispNumber::Float(a))
-        } else if let Ok(a) = value.parse::<bool>() {
-            if a {
-                Atom::Bool(RLispBoolean::True(a))
-            } else {
-                Atom::Bool(RLispBoolean::False(a))
-            }
+        } else if value == "#t" {
+            Atom::Bool(RLispBoolean::True(true))
+        } else if value == "#f" {
+            Atom::Bool(RLispBoolean::False(false))
         } else {
             Atom::Symbol(value.clone())
         }
@@ -320,12 +324,10 @@ impl From<String> for Atom {
             Atom::Number(RLispNumber::Int(a))
         } else if let Ok(a) = value.parse::<f32>() {
             Atom::Number(RLispNumber::Float(a))
-        } else if let Ok(a) = value.parse::<bool>() {
-            if a {
-                Atom::Bool(RLispBoolean::True(a))
-            } else {
-                Atom::Bool(RLispBoolean::False(a))
-            }
+        } else if value == "#t" {
+            Atom::Bool(RLispBoolean::True(true))
+        } else if value == "#f" {
+            Atom::Bool(RLispBoolean::False(false))
         } else {
             Atom::Symbol(value.clone())
         }
@@ -427,51 +429,51 @@ impl ExprKind {
 impl From<SymbolicExpression> for ExprKind {
     fn from(value: SymbolicExpression) -> Self {
             match value {
-                SymbolicExpression::Atom(atom) => ExprKind::Atom(Box::new(Atom::from(atom))),
+                SymbolicExpression::Atom(atom) => ExprKind::Atom(Arc::new(Atom::from(atom))),
                 SymbolicExpression::List(symbolic_expressions) => {
                     let first = &symbolic_expressions[0];
                     match first {
                         SymbolicExpression::Atom(name) => {
                             if name == "if" {
-                                ExprKind::If(Box::new(If {
+                                ExprKind::If(Arc::new(If {
                                     test_expr: symbolic_expressions[1].clone().into(),
                                     then_expr: symbolic_expressions[2].clone().into(),
                                     else_expr: symbolic_expressions[3].clone().into(),
                                 }))
                             } else if name == "begin" {
-                              ExprKind::Begin(Box::new(Begin {
+                              ExprKind::Begin(Arc::new(Begin {
                                   exprs: symbolic_expressions[1..symbolic_expressions.len()]
                                       .into_iter()
                                       .map(|exp| ExprKind::from(exp.clone()))
                                       .collect()
                               }))
                             } else if name == "define" {
-                                ExprKind::Define(Box::new(Define {
+                                ExprKind::Define(Arc::new(Define {
                                     name: symbolic_expressions[1].clone().into(),
                                     body: symbolic_expressions[2].clone().into(),
                                 }))
                             } else {
-                                ExprKind::List(Box::new(List {
+                                ExprKind::List(Arc::new(List {
                                     args: symbolic_expressions.into_iter().map(ExprKind::from).collect(),
                                     object_id: 0
                                 }))
                             }
                         },
                         _ => {
-                            ExprKind::List(Box::new(List {
+                            ExprKind::List(Arc::new(List {
                                 args: symbolic_expressions.into_iter().map(ExprKind::from).collect(),
                                 object_id: 0,
                             }))
                         },
                     }
                 },
-                SymbolicExpression::ListExpr(symbolic_expressions) => ExprKind::Quote(Box::new(Quote {
-                    expr: ExprKind::List(Box::new(List {
+                SymbolicExpression::ListExpr(symbolic_expressions) => ExprKind::Quote(Arc::new(Quote {
+                    expr: ExprKind::List(Arc::new(List {
                         args: symbolic_expressions.into_iter().map(ExprKind::from).collect(),
                         object_id: 0,
                     }))
                 })),
-                SymbolicExpression::Lambda(symbolic_expressions) => ExprKind::Lambda(Box::new(Lambda {
+                SymbolicExpression::Lambda(symbolic_expressions) => ExprKind::Lambda(Arc::new(Lambda {
                     args: symbolic_expressions[1].clone().into(),
                     body: symbolic_expressions[2].clone().into(),
                     object_id: 0,
