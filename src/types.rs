@@ -45,6 +45,7 @@ pub enum SymbolicExpression {
 pub enum ExprKind {
     If(Arc<If>),
     Define(Arc<Define>),
+    Let(Arc<Let>),
     Begin(Arc<Begin>),
     Lambda(Arc<Lambda>),
     Atom(Arc<Atom>),
@@ -69,6 +70,13 @@ pub struct Define {
     pub name: ExprKind,
     pub body: ExprKind,
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Let {
+    pub declerations: ExprKind,
+    pub proc_call: ExprKind,
+}
+
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Lambda {
@@ -216,20 +224,23 @@ impl Display for ExprKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ExprKind::If(if_expr) => {
-                write!(f, "(\nif \n{} \n{} \n{}\n)", if_expr.test_expr, if_expr.then_expr, if_expr.else_expr)
+                write!(f, "(if {} \n{} \n{})", if_expr.test_expr, if_expr.then_expr, if_expr.else_expr)
             }
             ExprKind::Define(define_expr) => {
-                write!(f, "\n(\ndefine {}\n\t{}\n)", define_expr.name, define_expr.body)
+                write!(f, "(define {} \n{})", define_expr.name, define_expr.body)
             }
             ExprKind::Begin(begin_expr) => {
-                write!(f, "\n(\nbegin")?;
+                write!(f, "(begin\n")?;
                 for expr in begin_expr.exprs.iter() {
                     write!(f, "\n{}\n", expr)?;
                 }
                 write!(f, ")")
             }
             ExprKind::Lambda(lambda_expr) => {
-                write!(f, "(\nlambda\n{}\n{}\n)", lambda_expr.args, lambda_expr.body)
+                write!(f, "(lambda {}\n{}\n)", lambda_expr.args, lambda_expr.body)
+            }
+            ExprKind::Let(let_expr) => {
+                write!(f, "(let {:?} \n {}", let_expr.declerations, let_expr.proc_call)
             }
             ExprKind::Atom(atom_expr) => {
                 write!(f, "{}", atom_expr)
@@ -361,8 +372,8 @@ impl ExprKind {
                                         }
                                     }
                                 }
-                                ExprKind::Atom(atom) => {
-                                    if let Atom::Symbol(ref name) = **atom {
+                                ExprKind::Atom(param) => {
+                                    if let Atom::Symbol(ref name) = **param {
                                         param_map.insert(name.clone(), lambda.args.clone());
                                     } else {
                                         return Err("lambda parameter must be a symbol".to_string());
@@ -431,6 +442,12 @@ impl From<SymbolicExpression> for ExprKind {
             match value {
                 SymbolicExpression::Atom(atom) => ExprKind::Atom(Arc::new(Atom::from(atom))),
                 SymbolicExpression::List(symbolic_expressions) => {
+                    if symbolic_expressions.len() < 1 {
+                        return ExprKind::List(Arc::new(List{
+                            args: vec![],
+                            object_id: 0,
+                        }));
+                    }
                     let first = &symbolic_expressions[0];
                     match first {
                         SymbolicExpression::Atom(name) => {
@@ -452,6 +469,11 @@ impl From<SymbolicExpression> for ExprKind {
                                     name: symbolic_expressions[1].clone().into(),
                                     body: symbolic_expressions[2].clone().into(),
                                 }))
+                            } else if name == "let" {
+                                ExprKind::Let(Arc::new(Let{
+                                        declerations: symbolic_expressions[1].clone().into(),
+                                        proc_call: symbolic_expressions[2].clone().into(),
+                                }))
                             } else {
                                 ExprKind::List(Arc::new(List {
                                     args: symbolic_expressions.into_iter().map(ExprKind::from).collect(),
@@ -466,6 +488,7 @@ impl From<SymbolicExpression> for ExprKind {
                             }))
                         },
                     }
+
                 },
                 SymbolicExpression::ListExpr(symbolic_expressions) => ExprKind::Quote(Arc::new(Quote {
                     expr: ExprKind::List(Arc::new(List {

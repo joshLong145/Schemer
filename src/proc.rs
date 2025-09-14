@@ -44,19 +44,14 @@ impl Eval for Proc<'_> {
         &self,
         symbol_definitions: &mut HashMap<String, ExprKind>,
     ) -> Result<ExprKind, String> {
-        // Create a new environment for this procedure call
         let mut local_symbols = HashMap::new();
-
-        // Add all existing symbol definitions for closure access
         local_symbols.extend(symbol_definitions.clone());
-
-        // Add parameter bindings to the local environment
         local_symbols.extend(self.params.clone());
 
-        // Pattern match on the signature to ensure proper binding
+
         match &self.signature {
             ExprKind::List(list) => {
-                // List of parameters - validate each one is bound
+
                 for param in list.args.iter() {
                     match param {
                         ExprKind::Atom(atom) => match atom.as_ref() {

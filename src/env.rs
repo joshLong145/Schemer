@@ -1,5 +1,3 @@
-
-
 use crate::{
     op::NumericOps, proc::Eval, types::{
         Atom, ExprKind, List, Quote, RLispBoolean, RLispNumber, SymbolicExpression
@@ -209,6 +207,25 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
         }),
     );
 
+    env.insert(
+        "null?".to_string(),
+        Box::new(|exp, _| {
+            if exp.is_empty() {
+                return Err("bool? requires one argument".to_string());
+            }
+
+            if let ExprKind::List(exp) = exp[0].clone() {
+                if exp.args.len() == 0 {
+                    return Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(true)))));
+                } else {
+                    return Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(false)))));
+                }
+            } else {
+                return Err("invalid expression".to_string());
+            }
+        }),
+    );
+
     // List operations
     env.insert(
         "len".to_string(),
@@ -327,15 +344,8 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                 return Err("> requires at least two arguments".to_string());
             }
 
-            let l = match &exp[0] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            let r = match &exp[1] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
+            let l = &exp[0];
+            let r = &exp[1];
 
             Ok(ExprKind::Atom(Arc::new(Atom::Bool(if l == r {
                 RLispBoolean::True(true)

@@ -5,7 +5,7 @@ use schemer::{
     eval::eval,
     parser::{parse, read_from_tokens},
     proc::ProcedureFn,
-    types::{Atom, ExprKind, List, Quote, RLispNumber},
+    types::{Atom, ExprKind, List, Quote, RLispBoolean, RLispNumber},
 };
 
 fn setup_logging() {
@@ -386,4 +386,170 @@ fn parse_and_eval_filter_with_function_symbol() {
             })),
         }))
     );
+}
+
+
+#[test]
+fn parse_and_eval_eq_numerics() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse(
+        "(begin
+            (= 1 1)
+        )".to_string().replace("\n", "").replace("\t", ""),
+        &mut exp_map,
+    );
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
+
+    assert_eq!(res, ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(true)))));
+}
+
+
+#[test]
+fn parse_and_eval_eq_booleans_true() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse(
+        "(begin
+            (= #f #f)
+        )".to_string().replace("\n", "").replace("\t", ""),
+        &mut exp_map,
+    );
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
+
+    assert_eq!(res, ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(true)))));
+}
+
+#[test]
+fn parse_and_eval_eq_booleans_false() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse(
+        "(begin
+            (= #f #t)
+        )".to_string().replace("\n", "").replace("\t", ""),
+        &mut exp_map,
+    );
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
+
+    assert_eq!(res, ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(false)))));
+}
+
+
+#[test]
+fn parse_and_eval_eq_lists_true() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse(
+        "(begin
+            (= (1 2) (1 2))
+        )".to_string().replace("\n", "").replace("\t", ""),
+        &mut exp_map,
+    );
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
+
+    assert_eq!(res, ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(true)))));
+}
+
+
+#[test]
+fn parse_and_eval_eq_lists_false() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse(
+        "(begin
+            (= (1 2) (1 3))
+        )".to_string().replace("\n", "").replace("\t", ""),
+        &mut exp_map,
+    );
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
+
+    assert_eq!(res, ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(false)))));
+}
+
+#[test]
+fn parse_and_eval_eq_lists_with_eval() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse(
+        "(begin
+            (= (1 2) (1 (+ 1 1)))
+        )".to_string().replace("\n", "").replace("\t", ""),
+        &mut exp_map,
+    );
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
+
+    assert_eq!(res, ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(true)))));
+}
+
+
+
+#[test]
+fn parse_and_eval_let() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse(
+        "(begin
+            (define foo (1 2 3))
+            (define adder (lambda (x y) (let
+                    (
+                        (define a (car foo))
+                        (define b (car (cdr foo)))
+                    )
+                    (list a b x y)
+                )
+            ))
+
+            (adder (1 2))
+        )".to_string().replace("\n", "").replace("\t", ""),
+        &mut exp_map,
+    );
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
+
+    assert_eq!(res, ExprKind::Quote(Arc::new(Quote{
+        expr: ExprKind::List(Arc::new(List {
+            args: vec![
+                ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
+                ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
+                ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
+                ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
+            ],
+            object_id: 0,
+        })),
+    })));
 }

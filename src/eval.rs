@@ -2,7 +2,7 @@ use log::debug;
 
 use crate::{
     proc::Eval, types::{
-        Atom, Begin, Define, ExprKind, If, Lambda, List, RLispBoolean,
+        Atom, Begin, Define, ExprKind, If, Lambda, Let, List, RLispBoolean, SymbolicExpression
     }
 };
 use std::{collections::HashMap, sync::Arc};
@@ -30,6 +30,7 @@ pub fn eval(
         }
         ExprKind::Define(define) => eval_define(Arc::try_unwrap(define).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
         ExprKind::If(if_expr) => eval_if(Arc::try_unwrap(if_expr).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
+        ExprKind::Let(let_expr) => eval_let(Arc::try_unwrap(let_expr).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
         ExprKind::Begin(begin) => eval_begin(Arc::try_unwrap(begin).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
         ExprKind::Lambda(lambda) => eval_lambda(Arc::try_unwrap(lambda).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
         ExprKind::List(list) => eval_list(Arc::try_unwrap(list).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
@@ -153,6 +154,36 @@ fn eval_list(
         object_id: list.object_id,
     })))
 }
+
+
+fn eval_let(
+    let_expr: Let,
+    env: &HashMap<String, ProcedureFn>,
+    symbol_definitions: &mut HashMap<String, ExprKind>,
+) -> Result<ExprKind, String> {
+    debug!("expression found to be let {:?}", let_expr);
+    let mut local_symbols = HashMap::new();
+    local_symbols.extend(symbol_definitions.clone());
+
+    if let ExprKind::List(defines) = let_expr.declerations {
+        for def in defines.args.iter() {
+            let _ = eval(def.clone(), env, &mut local_symbols);
+        }
+
+        debug!("current symbol table: {:?}", &mut local_symbols);
+        if let ExprKind::List(_) = let_expr.proc_call.clone() {
+            let res = eval(let_expr.proc_call, &env, &mut local_symbols)?;
+            return Ok(res);
+        }
+    }
+
+    Ok(ExprKind::List(Arc::new(List {
+        args: vec![],
+        object_id: 0,
+    })))
+}
+
+
 
 pub fn resolve_symbol_if_present(
     expr: &ExprKind,
