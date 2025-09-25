@@ -1,4 +1,3 @@
-use log::debug;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use schemer::env::std_env;
@@ -21,7 +20,7 @@ pub fn repl() -> rustyline::Result<()> {
             Ok(buffer) => {
                 let _ = rl.add_history_entry(buffer.as_str());
 
-                let mut token_map = parse(buffer, &mut exp_map);
+                let mut token_map = parse(buffer.replace("\n", "").replace("\t", ""), &mut exp_map);
                 let exp = read_from_tokens(&mut token_map).unwrap().into();
                 let res = eval(exp, &env, &mut symbol_definitions).unwrap();
                 println!("{}", res);

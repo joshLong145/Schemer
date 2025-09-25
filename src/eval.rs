@@ -2,7 +2,7 @@ use log::debug;
 
 use crate::{
     proc::Eval, types::{
-        Atom, Begin, Define, ExprKind, If, Lambda, Let, List, RLispBoolean, SymbolicExpression
+        Atom, Begin, Define, ExprKind, If, Lambda, Let, List, RLispBoolean
     }
 };
 use std::{collections::HashMap, sync::Arc};
@@ -35,6 +35,7 @@ pub fn eval(
         ExprKind::Lambda(lambda) => eval_lambda(Arc::try_unwrap(lambda).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
         ExprKind::List(list) => eval_list(Arc::try_unwrap(list).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
         ExprKind::Quote(quote) => Ok(ExprKind::Quote(quote)),
+        ExprKind::StringLiteral(s) => Ok(ExprKind::StringLiteral(s)),
     }
 }
 
@@ -133,8 +134,13 @@ fn eval_list(
 
                 if def.is_proc() {
                     debug!("found expression to be procedure call {}", def);
-                    let param_eval = eval(list.args[1].clone(), env, &mut symbol_definitions.clone())?;
-                    let proc = ExprKind::to_proc(def, param_eval, env).unwrap();
+                    let mut param_evals: Vec<ExprKind> = Vec::new();
+                    for e in list.args[1..list.args.len()].iter() {
+                        let param_eval = eval(e.to_owned(), env, &mut symbol_definitions.clone())?;
+                        param_evals.push(param_eval);
+                    }
+
+                    let proc = ExprKind::to_proc(def, param_evals, env).unwrap();
                     let res = proc.proc_eval(symbol_definitions).unwrap();
                     debug!("procedure result: {}", res);
                     return Ok(res);

@@ -67,36 +67,16 @@ fn parse_and_eval_var_declare_and_resolve_for_proc() {
 }
 
 #[test]
-fn parse_and_eval_list_append() {
-    setup_logging();
-
-    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
-    let mut token_map = parse("(begin (append (1 2) 1))".to_string(), &mut exp_map);
-    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
-
-    let env = std_env();
-    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
-    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
-
-    assert_eq!(
-        res,
-        ExprKind::List(Arc::new(List {
-            args: vec![
-                ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
-                ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
-                ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
-            ],
-            object_id: 0,
-        }))
-    );
-}
-
-#[test]
 fn parse_and_eval_list_append_from_proc() {
     setup_logging();
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
-    let mut token_map = parse("(begin (append (1 2) (+ 1 1)))".to_string(), &mut exp_map);
+    let mut token_map = parse("
+        (begin
+            (define foo (lambda () (append '(1 2) '(1))))
+            (foo)
+        )
+    ".to_string().replace("\n", "").replace("\t", ""), &mut exp_map);
     let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
@@ -105,26 +85,31 @@ fn parse_and_eval_list_append_from_proc() {
 
     assert_eq!(
         res,
-        ExprKind::List(Arc::new(List {
-            args: vec![
-                ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
-                ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
-                ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
-            ],
-            object_id: 0,
+        ExprKind::Quote(Arc::new(Quote {
+            expr: ExprKind::List(Arc::new(List {
+                args: vec![
+                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
+                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
+                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
+                ],
+                object_id: 0,
+            })),
         }))
     );
 }
 
 #[test]
-fn parse_and_eval_list_append_and_print_proc() {
+fn parse_and_eval_list_append_list_from_proc() {
     setup_logging();
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
-    let mut token_map = parse(
-        "(begin (display (append (1 2) (+ 1 1))))".to_string(),
-        &mut exp_map,
-    );
+    let mut token_map = parse("
+        (begin
+            (define ret-list (lambda () (list 2 3)))
+            (define foo (lambda () (append '(1) (ret-list))))
+            (foo)
+        )
+    ".to_string().replace("\n", "").replace("\t", ""), &mut exp_map);
     let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
@@ -133,7 +118,79 @@ fn parse_and_eval_list_append_and_print_proc() {
 
     assert_eq!(
         res,
-        ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(0))))
+        ExprKind::Quote(Arc::new(Quote {
+            expr: ExprKind::List(Arc::new(List {
+                args: vec![
+                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
+                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
+                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(3)))),
+                ],
+                object_id: 0,
+            })),
+        }))
+    );
+}
+
+#[test]
+fn parse_and_eval_list_append_single() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse("
+        (begin
+            (append '(1 2) '(1))
+        )
+    ".to_string().replace("\n", "").replace("\t", ""), &mut exp_map);
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
+
+    assert_eq!(
+        res,
+        ExprKind::Quote(Arc::new(Quote {
+            expr: ExprKind::List(Arc::new(List {
+                args: vec![
+                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
+                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
+                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
+                ],
+                object_id: 0,
+            })),
+        }))
+    );
+}
+
+#[test]
+fn parse_and_eval_list_append_multiple() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse("
+        (begin
+            (append '(1 2) '(1) '(1))
+        )
+    ".to_string().replace("\n", "").replace("\t", ""), &mut exp_map);
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
+
+    assert_eq!(
+        res,
+        ExprKind::Quote(Arc::new(Quote {
+            expr: ExprKind::List(Arc::new(List {
+                args: vec![
+                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
+                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
+                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
+                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
+                ],
+                object_id: 0,
+            })),
+        }))
     );
 }
 
@@ -531,7 +588,7 @@ fn parse_and_eval_let() {
                 )
             ))
 
-            (adder (1 2))
+            (adder 1 2)
         )".to_string().replace("\n", "").replace("\t", ""),
         &mut exp_map,
     );
@@ -552,4 +609,47 @@ fn parse_and_eval_let() {
             object_id: 0,
         })),
     })));
+}
+
+#[test]
+fn parse_and_eval_char_define() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse(
+        "
+            (begin
+                (define a #\\a)
+                a
+            )
+        ".to_string().replace("\n", "").replace("\t", ""),
+        &mut exp_map,
+    );
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
+
+    assert_eq!(res, ExprKind::StringLiteral(Arc::new("a".to_string())));
+}
+
+#[test]
+fn parse_and_eval_string_create() {
+    setup_logging();
+
+    let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+    let mut token_map = parse(
+        "(begin
+            (string #\\a #\\b)
+        )".to_string().replace("\n", "").replace("\t", ""),
+        &mut exp_map,
+    );
+    let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
+
+    let env = std_env();
+    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let res = eval(exp, &env, &mut symbol_definitions).unwrap();
+
+    assert_eq!(res, ExprKind::StringLiteral(Arc::new("ab".to_string())),);
 }

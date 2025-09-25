@@ -12,8 +12,9 @@ pub type RLispSymbol = String;
 
 pub type RLispList<'a> = Vec<Atom>;
 pub type RLispSubSymbolicExpressions = Vec<SymbolicExpression>;
-
+pub type AtomToken = String;
 pub type Tokens<'a> = &'a mut VecDeque<String>;
+
 
 pub enum RLispNumber {
     Int(i32),
@@ -31,7 +32,7 @@ pub enum Atom {
     Bool(RLispBoolean),
 }
 
-pub type AtomToken = String;
+
 
 #[derive(Clone, Eq, PartialEq)]
 pub enum SymbolicExpression {
@@ -39,6 +40,8 @@ pub enum SymbolicExpression {
     List(RLispSubSymbolicExpressions),
     ListExpr(RLispSubSymbolicExpressions),
     Lambda(RLispSubSymbolicExpressions),
+    StringLiteral(String),
+    Character(char)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -51,6 +54,7 @@ pub enum ExprKind {
     Atom(Arc<Atom>),
     List(Arc<List>),
     Quote(Arc<Quote>),
+    StringLiteral(Arc<String>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -95,6 +99,7 @@ pub struct List {
 pub struct Quote{
     pub expr: ExprKind
 }
+
 
 impl Clone for RLispBoolean {
     fn clone(&self) -> Self {
@@ -216,6 +221,12 @@ impl Display for SymbolicExpression {
                 }
                 write!(f, ")")
             }
+            SymbolicExpression::StringLiteral(string) => {
+                write!(f, "{}", string)
+            }
+            SymbolicExpression::Character(c) => {
+                write!(f, "{}", c)
+            }
         }
     }
 }
@@ -258,6 +269,10 @@ impl Display for ExprKind {
             ExprKind::Quote(quote_expr) => {
                 write!(f, "'{}", quote_expr.expr)
             }
+
+            ExprKind::StringLiteral(s) => {
+                write!(f, "{}", s)
+            }
         }
     }
 }
@@ -298,6 +313,8 @@ impl Debug for SymbolicExpression {
             Self::List(arg0) => f.debug_tuple("List").field(arg0).finish(),
             Self::ListExpr(arg0) => f.debug_tuple("List").field(arg0).finish(),
             Self::Lambda(arg0) => f.debug_tuple("Lambda").field(arg0).finish(),
+            Self::StringLiteral(arg0) => f.debug_tuple("String").field(arg0).finish(),
+            Self::Character(arg0) => f.debug_tuple("Character").field(arg0).finish(),
         }
     }
 }
@@ -306,6 +323,8 @@ impl SymbolicExpression {
     pub fn try_peek(&self) -> Option<SymbolicExpression> {
         match self {
             SymbolicExpression::Atom(_) => None,
+            Self::StringLiteral(_) => None,
+            Self::Character(_) => None,
             SymbolicExpression::List(vec) => Some(vec[0].clone()),
             SymbolicExpression::ListExpr(vec) => Some(vec[0].clone()),
             SymbolicExpression::Lambda(la) => Some(la[0].clone()),
@@ -345,87 +364,49 @@ impl From<String> for Atom {
     }
 }
 
+
 impl ExprKind {
     pub fn to_proc<'a>(
             &self,
-            params: ExprKind,
+            params: Vec<ExprKind>,
             env: &'a HashMap<String, ProcedureFn>,
         ) -> Result<Proc<'a>, String> {
             match self {
                 ExprKind::Lambda(lambda) => {
                     let mut param_map = HashMap::new();
-                    match params {
-                        ExprKind::List(l) => {
-                            // Extract parameter names from lambda args
-                            match &lambda.args {
-                                ExprKind::List(param_list) => {
-                                    debug!("mapping parameters to signature {:?} args {:?}", param_list, l);
-                                    for i in 0..param_list.args.len() {
-                                        if let ExprKind::Atom(atom) = param_list.args[i].clone() {
-                                            if let Atom::Symbol(ref name) = *atom {
-                                                param_map.insert(name.clone(), l.args[i].clone());
-                                            } else {
-                                                return Err("lambda parameters must be symbols".to_string());
-                                            }
-                                        } else {
-                                            return Err("lambda parameters must be symbols".to_string());
-                                        }
-                                    }
-                                }
-                                ExprKind::Atom(param) => {
-                                    if let Atom::Symbol(ref name) = **param {
-                                        param_map.insert(name.clone(), lambda.args.clone());
-                                    } else {
-                                        return Err("lambda parameter must be a symbol".to_string());
-                                    }
-                                }
-                                _ => return Err("invalid lambda parameter specification".to_string()),
-                            }
 
-                            return Ok(Proc {
-                                params: param_map.clone(),
-                                signature: lambda.args.clone(),
-                                body: lambda.body.clone(),
-                                env: env,
-                            });
-                        }
-                        ExprKind::Atom(a) => {
-                            // Extract parameter names from lambda args
-                            match &lambda.args {
-                                ExprKind::List(param_list) => {
-                                    debug!("mapping parameters to signature {:?} args {:?}", param_list, a);
-                                    for i in 0..param_list.args.len() {
-                                        if let ExprKind::Atom(atom) = param_list.args[i].clone() {
-                                            if let Atom::Symbol(ref name) = *atom {
-                                                param_map.insert(name.clone(), ExprKind::Atom(a.clone()));
-                                            } else {
-                                                return Err("lambda parameters must be symbols".to_string());
-                                            }
-                                        } else {
-                                            return Err("lambda parameters must be symbols".to_string());
-                                        }
-                                    }
-                                }
-                                ExprKind::Atom(atom) => {
-                                    if let Atom::Symbol(ref name) = **atom {
-                                        param_map.insert(name.clone(), lambda.args.clone());
+                    // Extract parameter names from lambda args
+                    match &lambda.args {
+                        ExprKind::List(param_list) => {
+                            debug!("mapping parameters to signature {:?} args {:?}", param_list, params);
+                            for i in 0..param_list.args.len() {
+                                if let ExprKind::Atom(atom) = param_list.args[i].clone() {
+                                    if let Atom::Symbol(ref name) = *atom {
+                                        param_map.insert(name.clone(), params[i].clone());
                                     } else {
-                                        return Err("lambda parameter must be a symbol".to_string());
+                                        return Err("lambda parameters must be symbols".to_string());
                                     }
+                                } else {
+                                    return Err("lambda parameters must be symbols".to_string());
                                 }
-                                _ => return Err("invalid lambda parameter specification".to_string()),
                             }
-
-                            return Ok(Proc {
-                                params: param_map.clone(),
-                                signature: lambda.args.clone(),
-                                body: lambda.body.clone(),
-                                env: env,
-                            });
                         }
-                        _ =>  Err("invalid expression".to_string())
+                        ExprKind::Atom(param) => {
+                            if let Atom::Symbol(ref name) = **param {
+                                param_map.insert(name.clone(), lambda.args.clone());
+                            } else {
+                                return Err("lambda parameter must be a symbol".to_string());
+                            }
+                        }
+                        _ => return Err("invalid lambda parameter specification".to_string()),
                     }
 
+                    return Ok(Proc {
+                        params: param_map.clone(),
+                        signature: lambda.args.clone(),
+                        body: lambda.body.clone(),
+                        env: env,
+                    });
                 }
                 _ => Err("can only create procedures from lambda expressions".to_string()),
             }
@@ -441,6 +422,8 @@ impl From<SymbolicExpression> for ExprKind {
     fn from(value: SymbolicExpression) -> Self {
             match value {
                 SymbolicExpression::Atom(atom) => ExprKind::Atom(Arc::new(Atom::from(atom))),
+                SymbolicExpression::StringLiteral(str) => ExprKind::StringLiteral(Arc::new(str)),
+                SymbolicExpression::Character(c) => ExprKind::StringLiteral(Arc::new(c.to_string())),
                 SymbolicExpression::List(symbolic_expressions) => {
                     if symbolic_expressions.len() < 1 {
                         return ExprKind::List(Arc::new(List{
