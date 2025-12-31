@@ -9,7 +9,8 @@ use crate::{
     types::{Atom, ExprKind},
 };
 
-pub type ProcedureFn = Box<dyn Fn(Vec<ExprKind>, &mut HashMap<String, ExprKind>) -> Result<ExprKind, String>>;
+pub type ProcedureFn =
+    Box<dyn Fn(Vec<ExprKind>, &mut HashMap<String, ExprKind>) -> Result<ExprKind, String>>;
 
 pub struct Proc<'a> {
     pub params: HashMap<String, ExprKind>,
@@ -48,10 +49,8 @@ impl Eval for Proc<'_> {
         local_symbols.extend(symbol_definitions.clone());
         local_symbols.extend(self.params.clone());
 
-
         match &self.signature {
             ExprKind::List(list) => {
-
                 for param in list.args.iter() {
                     match param {
                         ExprKind::Atom(atom) => match atom.as_ref() {

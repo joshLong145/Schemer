@@ -1,44 +1,84 @@
 use log::debug;
+use tailcall::tailcall;
 
 use crate::{
-    proc::Eval, types::{
-        Atom, Begin, Define, ExprKind, If, Lambda, Let, List, RLispBoolean
-    }
+    proc::Eval,
+    types::{pair::Pair, Atom, Begin, Cond, Define, ExprKind, If, Lambda, Let, List, Quote, RLispBoolean},
 };
 use std::{collections::HashMap, sync::Arc};
 
-type ProcedureFn = Box<dyn Fn(Vec<ExprKind>, &mut HashMap<String, ExprKind>) -> Result<ExprKind, String>>;
+type ProcedureFn =
+    Box<dyn Fn(Vec<ExprKind>, &mut HashMap<String, ExprKind>) -> Result<ExprKind, String>>;
 
+
+#[tailcall]
 pub fn eval(
     expression: ExprKind,
     env: &HashMap<String, ProcedureFn>,
     symbol_definitions: &mut HashMap<String, ExprKind>,
 ) -> Result<ExprKind, String> {
-    debug!("evaluating expression: {}", expression);
+    debug!("evaluating expression: {:?}", expression);
     match expression {
-        ExprKind::Atom(atom) => {
-            match *atom {
-                Atom::Number(_) | Atom::Bool(_) => Ok(ExprKind::Atom(atom)),
-                Atom::Symbol(ref s) => {
-                    debug!("looking up symbol definition for {}", s);
-                    symbol_definitions
-                        .get(s)
-                        .cloned()
-                        .ok_or_else(|| format!("undefined symbol: {}", s))
-                }
+        ExprKind::Atom(atom) => match *atom {
+            Atom::Number(_) | Atom::Bool(_) => Ok(ExprKind::Atom(atom)),
+            Atom::Symbol(ref s) => {
+                debug!("looking up symbol definition for {}", s);
+                let exp = symbol_definitions
+                    .get(s)
+                    .cloned()
+                    .ok_or_else(|| format!("undefined symbol: {}", s)).unwrap();
+
+                Ok(exp)
             }
+        },
+        ExprKind::Cond(cond_exp) => {
+            eval_cond(
+                Arc::try_unwrap(cond_exp).unwrap_or_else(|arc| (*arc).clone()),
+                env,
+                symbol_definitions,
+            )
         }
-        ExprKind::Define(define) => eval_define(Arc::try_unwrap(define).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
-        ExprKind::If(if_expr) => eval_if(Arc::try_unwrap(if_expr).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
-        ExprKind::Let(let_expr) => eval_let(Arc::try_unwrap(let_expr).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
-        ExprKind::Begin(begin) => eval_begin(Arc::try_unwrap(begin).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
-        ExprKind::Lambda(lambda) => eval_lambda(Arc::try_unwrap(lambda).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
-        ExprKind::List(list) => eval_list(Arc::try_unwrap(list).unwrap_or_else(|arc| (*arc).clone()), env, symbol_definitions),
+        ExprKind::Define(define) => eval_define(
+            Arc::try_unwrap(define).unwrap_or_else(|arc| (*arc).clone()),
+            env,
+            symbol_definitions,
+        ),
+        ExprKind::If(if_expr) => eval_if(
+            Arc::try_unwrap(if_expr).unwrap_or_else(|arc| (*arc).clone()),
+            env,
+            symbol_definitions,
+        ),
+        ExprKind::Let(let_expr) => eval_let(
+            Arc::try_unwrap(let_expr).unwrap_or_else(|arc| (*arc).clone()),
+            env,
+            symbol_definitions,
+        ),
+        ExprKind::Begin(begin) => eval_begin(
+            Arc::try_unwrap(begin).unwrap_or_else(|arc| (*arc).clone()),
+            env,
+            symbol_definitions,
+        ),
+        ExprKind::Lambda(lambda) => eval_lambda(
+            Arc::try_unwrap(lambda).unwrap_or_else(|arc| (*arc).clone()),
+            env,
+            symbol_definitions,
+        ),
+        ExprKind::List(list) => eval_list(
+            Arc::try_unwrap(list).unwrap_or_else(|arc| (*arc).clone()),
+            env,
+            symbol_definitions,
+        ),
         ExprKind::Quote(quote) => Ok(ExprKind::Quote(quote)),
         ExprKind::StringLiteral(s) => Ok(ExprKind::StringLiteral(s)),
+        ExprKind::Pair(p) => eval_pair(
+            Arc::try_unwrap(p).unwrap_or_else(|arc| (*arc).clone()),
+            env,
+            symbol_definitions,
+        ),
     }
 }
 
+#[tailcall]
 fn eval_define(
     define: Define,
     env: &HashMap<String, ProcedureFn>,
@@ -58,12 +98,74 @@ fn eval_define(
     Ok(ExprKind::Atom(Arc::new(Atom::Symbol(name))))
 }
 
+#[tailcall]
+fn eval_cond(
+    cond_expr: Cond,
+    env: &HashMap<String, ProcedureFn>,
+    symbol_definitions: &mut HashMap<String, ExprKind>
+) -> Result<ExprKind, String> {
+    let mut was_flipped = false;
+    match cond_expr.test_exps {
+        ExprKind::List(tests) => {
+            for test in tests.args.iter() {
+                let test_res = match test {
+                    ExprKind::List(l) => {
+                        if l.args.len() < 2 {
+                            return Err("invalid test expression".to_string());
+                        }
+                        let test_exp = l.args[0].clone();
+                        let test_res = eval(test_exp, env, symbol_definitions)?;
+                        if let ExprKind::Atom(maybe_bool) = test_res {
+                            match maybe_bool.as_ref() {
+                                Atom::Bool(b) => {
+                                    (b.clone(), l.args[1].clone())
+                                },
+                                _ => {
+                                    return Err("cond test expression must return a boolean".to_string());
+                                }
+                            }
+                        } else {
+                            return Err("cond test expression must return a boolean".to_string())
+                        }
+                    },
+                    _ => {
+                        return Err("invalid test expression".to_string());
+                    }
+                };
+
+
+                if let RLispBoolean::True(val) = test_res.0 {
+                    if val == true {
+                        was_flipped = true;
+                        return eval(test_res.1, env, symbol_definitions);
+                    }
+                } else {
+                    continue;
+                }
+            }
+        },
+        _ => {
+
+        }
+    }
+
+    if !was_flipped {
+        return eval(cond_expr.else_expr, env, symbol_definitions);
+    }
+
+    Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(false)))))
+}
+
+#[tailcall]
 fn eval_if(
     if_expr: If,
     env: &HashMap<String, ProcedureFn>,
     symbol_definitions: &mut HashMap<String, ExprKind>,
 ) -> Result<ExprKind, String> {
-    debug!("evaling test cond: {}, symbol defs: {:?}", if_expr.test_expr, symbol_definitions);
+    debug!(
+        "evaling test cond: {}, symbol defs: {:?}",
+        if_expr.test_expr, symbol_definitions
+    );
     let test_expr = resolve_symbol_if_present(&if_expr.test_expr, symbol_definitions, env);
     let test_result = eval(test_expr, env, symbol_definitions)?;
 
@@ -77,6 +179,7 @@ fn eval_if(
     }
 }
 
+#[tailcall]
 fn eval_begin(
     begin: Begin,
     env: &HashMap<String, ProcedureFn>,
@@ -100,6 +203,7 @@ fn eval_lambda(
     Ok(ExprKind::Lambda(Arc::new(lambda)))
 }
 
+#[tailcall]
 fn eval_list(
     list: List,
     env: &HashMap<String, ProcedureFn>,
@@ -120,15 +224,17 @@ fn eval_list(
                 let mut offset = 0;
                 // Evaluate all arguments
                 for arg in list.args[1..].iter() {
-                    debug!("evaluating expression in list {}", arg);
+                    debug!("evaluating expression in list {:?}", arg);
                     let evaluated = eval(arg.clone(), env, symbol_definitions)?;
-                    debug!("evaluated expression {}", evaluated);
+                    debug!("evaluated expression {:?}", evaluated);
                     evaluated_args.insert(offset, evaluated);
                     offset += 1;
                 }
 
                 debug!("invoking proc {} with args {:?}", name, evaluated_args);
-                return proc(evaluated_args, symbol_definitions);
+                let proc_res = proc(evaluated_args.clone(), symbol_definitions);
+                debug!("result of proc {:?}", proc_res);
+                return proc_res;
             } else if let Some(def) = symbol_definitions.get(name) {
                 debug!("found symbol definition {} definition {}", name, def);
 
@@ -161,7 +267,7 @@ fn eval_list(
     })))
 }
 
-
+#[tailcall]
 fn eval_let(
     let_expr: Let,
     env: &HashMap<String, ProcedureFn>,
@@ -189,6 +295,20 @@ fn eval_let(
     })))
 }
 
+fn eval_pair(
+    pair: Pair<ExprKind>,
+    _: &HashMap<String, ProcedureFn>,
+    _: &mut HashMap<String, ExprKind>,
+) -> Result<ExprKind, String> {
+    if pair.is_list() {
+        debug!("found pair to be list");
+        return Ok(ExprKind::Quote(Arc::new(Quote{
+            expr: ExprKind::Pair(Arc::new(pair))
+        })));
+    }
+
+    Ok(ExprKind::Pair(Arc::new(pair)))
+}
 
 
 pub fn resolve_symbol_if_present(
@@ -198,9 +318,10 @@ pub fn resolve_symbol_if_present(
 ) -> ExprKind {
     match expr {
         ExprKind::Atom(atom) => match atom.as_ref() {
-            Atom::Symbol(s) => {
-                symbol_definitions.get(s).cloned().unwrap_or_else(|| expr.clone())
-            }
+            Atom::Symbol(s) => symbol_definitions
+                .get(s)
+                .cloned()
+                .unwrap_or_else(|| expr.clone()),
             _ => expr.clone(),
         },
         ExprKind::List(list) => ExprKind::List(Arc::new(List {
@@ -214,7 +335,7 @@ pub fn resolve_symbol_if_present(
         ExprKind::Lambda(lambda) => ExprKind::Lambda(Arc::new(Lambda {
             args: lambda.args.clone(),
             body: resolve_symbol_if_present(&lambda.body, symbol_definitions, env),
-            object_id: lambda.object_id,
+            object_id: 0,
         })),
         _ => expr.clone(),
     }

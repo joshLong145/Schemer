@@ -185,13 +185,12 @@ impl RLispNumber {
 
 impl PartialOrd for Atom {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-
         if self == other {
             return Some(Ordering::Equal);
         }
 
         match (self, other) {
-            (Atom::Number(l), Atom::Number(r)) => l.partial_cmp(r) ,
+            (Atom::Number(l), Atom::Number(r)) => l.partial_cmp(r),
             (Atom::Number(_), Atom::Symbol(_)) => todo!(),
             (Atom::Number(_), Atom::Bool(_)) => todo!(),
             (Atom::Symbol(_), Atom::Number(_)) => todo!(),
@@ -201,7 +200,6 @@ impl PartialOrd for Atom {
             (Atom::Bool(_), Atom::Symbol(_)) => todo!(),
             (Atom::Bool(_), Atom::Bool(_)) => todo!(),
         }
-
     }
 }
 
