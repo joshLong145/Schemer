@@ -8,7 +8,7 @@ use schemer::{
     eval::eval,
     parser::{parse, read_from_tokens},
     proc::ProcedureFn,
-    types::{Atom, ExprKind, List, Quote, RLispBoolean, RLispNumber},
+    types::{Atom, ExprKind, List, Quote, RLispBoolean, RLispNumber, list::PairList},
 };
 
 fn setup_logging() {
@@ -96,11 +96,11 @@ fn parse_and_eval_list_append_from_proc() {
         res,
         ExprKind::Quote(Arc::new(Quote {
             expr: ExprKind::List(Arc::new(List {
-                args: vec![
+                args: PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
-                ],
+                ]),
                 object_id: 0,
             })),
         }))
@@ -135,11 +135,11 @@ fn parse_and_eval_list_append_list_from_proc() {
         res,
         ExprKind::Quote(Arc::new(Quote {
             expr: ExprKind::List(Arc::new(List {
-                args: vec![
+                args: PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(3)))),
-                ],
+                ]),
                 object_id: 0,
             })),
         }))
@@ -172,11 +172,11 @@ fn parse_and_eval_list_append_single() {
         res,
         ExprKind::Quote(Arc::new(Quote {
             expr: ExprKind::List(Arc::new(List {
-                args: vec![
+                args: PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
-                ],
+                ]),
                 object_id: 0,
             })),
         }))
@@ -209,12 +209,12 @@ fn parse_and_eval_list_append_multiple() {
         res,
         ExprKind::Quote(Arc::new(Quote {
             expr: ExprKind::List(Arc::new(List {
-                args: vec![
+                args: PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
-                ],
+                ]),
                 object_id: 0,
             })),
         }))
@@ -304,11 +304,11 @@ fn parse_and_eval_map_with_lambda() {
         res,
         ExprKind::Quote(Arc::new(Quote {
             expr: ExprKind::List(Arc::new(List {
-                args: vec![
+                args: PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(3)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(4)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(4)))),
-                ],
+                ]),
                 object_id: 0,
             })),
         }))
@@ -394,7 +394,7 @@ fn parse_and_eval_map_with_function_symbol() {
         res,
         ExprKind::Quote(Arc::new(Quote {
             expr: ExprKind::List(Arc::new(List {
-                args: vec![ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(10))))],
+                args: PairList::from_vec(vec![ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(10))))]),
                 object_id: 0,
             })),
         }))
@@ -429,10 +429,10 @@ fn parse_and_eval_filter_with_function() {
         res,
         ExprKind::Quote(Arc::new(Quote {
             expr: ExprKind::List(Arc::new(List {
-                args: vec![
+                args: PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(10)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(3)))),
-                ],
+                ]),
                 object_id: 0,
             })),
         }))
@@ -468,10 +468,10 @@ fn parse_and_eval_filter_with_function_symbol() {
         res,
         ExprKind::Quote(Arc::new(Quote {
             expr: ExprKind::List(Arc::new(List {
-                args: vec![
+                args: PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(10)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(3)))),
-                ],
+                ]),
                 object_id: 0,
             })),
         }))
@@ -668,12 +668,12 @@ fn parse_and_eval_let() {
         res,
         ExprKind::Quote(Arc::new(Quote {
             expr: ExprKind::List(Arc::new(List {
-                args: vec![
+                args: PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
-                ],
+                ]),
                 object_id: 0,
             })),
         }))

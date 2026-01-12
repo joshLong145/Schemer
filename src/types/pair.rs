@@ -1,4 +1,4 @@
-use crate::types::ExprKind;
+use crate::types::{ExprKind, list::PairList};
 use std::sync::Arc;
 
 pub trait Node {}
@@ -12,15 +12,11 @@ pub struct Pair<N: Node> {
 
 impl Pair<ExprKind> {
     pub fn car(self) -> Option<Arc<ExprKind>> {
-        let car = self.car.clone();
-
-        car
+        self.car
     }
 
     pub fn cdr(self) -> Option<Arc<ExprKind>> {
-        let cdr = self.cdr.clone();
-
-        cdr
+        self.cdr
     }
 }
 
@@ -28,24 +24,23 @@ impl Iterator for Pair<ExprKind> {
     type Item = Arc<ExprKind>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut curr = None;
-        if let Some(car) = self.car.clone() {
-            curr = Some(car);
-        }
-        if let Some(cdr) = self.cdr.to_owned() {
-            match cdr.as_ref() {
+        let curr = self.car.clone();
+        
+        match self.cdr.clone() {
+            Some(cdr) => match cdr.as_ref() {
                 ExprKind::Pair(p) => {
-                    self.cdr = p.cdr.clone();
                     self.car = p.car.clone();
+                    self.cdr = p.cdr.clone();
                 }
                 _ => {
-                    self.cdr = None;
                     self.car = None;
+                    self.cdr = None;
                 }
+            },
+            None => {
+                self.car = None;
+                self.cdr = None;
             }
-        } else {
-            self.cdr = None;
-            self.car = None;
         }
 
         curr
@@ -54,23 +49,14 @@ impl Iterator for Pair<ExprKind> {
 
 impl std::fmt::Display for Pair<ExprKind> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let car = self.car.as_ref().unwrap();
+        let cdr = self.cdr.as_ref().unwrap();
+        
         if self.is_list() {
-            write!(
-                f,
-                "({} {})",
-                self.car.clone().unwrap().as_ref(),
-                self.cdr.clone().unwrap().as_ref()
-            )?;
+            write!(f, "({} {})", car, cdr)
         } else {
-            write!(
-                f,
-                "({} . {})",
-                self.car.clone().unwrap().as_ref(),
-                self.cdr.clone().unwrap().as_ref()
-            )?;
+            write!(f, "({} . {})", car, cdr)
         }
-
-        Ok(())
     }
 }
 
@@ -78,66 +64,40 @@ impl Pair<ExprKind> {
     pub fn is_list(&self) -> bool {
         let mut cursor = self.clone();
 
-        loop {
-            if let Some(cdr) = cursor.cdr.to_owned() {
-                match cdr.as_ref() {
-                    ExprKind::Pair(p) => {
-                        cursor.cdr = p.cdr.clone();
+        // Traverse to the end of the pair chain
+        while let Some(cdr) = cursor.cdr.clone() {
+            match cdr.as_ref() {
+                ExprKind::Pair(p) => {
+                    cursor.car = p.car.clone();
+                    cursor.cdr = p.cdr.clone();
+                }
+                ExprKind::Quote(q) => {
+                    if let ExprKind::Pair(p) = &q.as_ref().expr {
                         cursor.car = p.car.clone();
-                    }
-                    ExprKind::Quote(q) => match q.as_ref().clone().expr {
-                        ExprKind::Pair(p) => {
-                            cursor.cdr = p.cdr.clone();
-                            cursor.car = p.car.clone();
-                        }
-                        _ => {
-                            break;
-                        }
-                    },
-                    _ => {
+                        cursor.cdr = p.cdr.clone();
+                    } else {
                         break;
                     }
                 }
-            } else {
-                break;
+                _ => break,
             }
         }
 
-        if let Some(cdr) = cursor.cdr {
-            match cdr.as_ref() {
-                ExprKind::List(l) => {
-                    if l.args.len() < 1 {
-                        return true;
-                    } else {
-                        return true;
-                    }
-                }
-                ExprKind::Quote(q) => match q.as_ref().clone().expr {
-                    ExprKind::List(l) => {
-                        if l.args.len() < 1 {
-                            return true;
-                        } else {
-                            return true;
-                        }
-                    }
-
-                    _ => {
-                        return false;
-                    }
-                },
-                _ => {
-                    return false;
-                }
-            }
+        // Check if the final cdr is a proper list terminator
+        match cursor.cdr {
+            None => false,
+            Some(cdr) => match cdr.as_ref() {
+                ExprKind::List(_) => true,
+                ExprKind::Quote(q) => matches!(q.as_ref().expr, ExprKind::List(_)),
+                _ => false,
+            },
         }
-
-        false
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::types::{Atom, ExprKind, RLispNumber};
+    use crate::types::{Atom, ExprKind, List, RLispNumber};
     use std::sync::Arc;
 
     #[test]
@@ -147,10 +107,10 @@ mod tests {
                 RLispNumber::Int(1),
             ))))),
             cdr: Some(Arc::new(ExprKind::Pair(Arc::new(super::Pair::<ExprKind> {
-                    car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
-                        RLispNumber::Int(2),
-                    ))))),
-                    cdr: None,
+                car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                    RLispNumber::Int(2),
+                ))))),
+                cdr: None,
             })))),
         };
 
@@ -166,5 +126,129 @@ mod tests {
 
             i += 1;
         }
+    }
+
+    #[test]
+    fn test_car_cdr() {
+        let pair = super::Pair::<ExprKind> {
+            car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                RLispNumber::Int(1),
+            ))))),
+            cdr: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                RLispNumber::Int(2),
+            ))))),
+        };
+
+        let car = pair.clone().car();
+        assert!(car.is_some());
+        assert_eq!(
+            car.unwrap().as_ref(),
+            &ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1))))
+        );
+
+        let cdr = pair.cdr();
+        assert!(cdr.is_some());
+        assert_eq!(
+            cdr.unwrap().as_ref(),
+            &ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2))))
+        );
+    }
+
+    #[test]
+    fn test_is_list_proper() {
+        // Proper list: (1 . (2 . ()))
+        let pair = super::Pair::<ExprKind> {
+            car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                RLispNumber::Int(1),
+            ))))),
+            cdr: Some(Arc::new(ExprKind::Pair(Arc::new(super::Pair::<ExprKind> {
+                car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                    RLispNumber::Int(2),
+                ))))),
+                cdr: Some(Arc::new(ExprKind::List(Arc::new(List {
+                    args: super::PairList::nil(),
+                    object_id: 0,
+                })))),
+            })))),
+        };
+
+        assert!(pair.is_list());
+    }
+
+    #[test]
+    fn test_is_list_improper() {
+        // Improper list (dotted pair): (1 . 2)
+        let pair = super::Pair::<ExprKind> {
+            car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                RLispNumber::Int(1),
+            ))))),
+            cdr: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                RLispNumber::Int(2),
+            ))))),
+        };
+
+        assert!(!pair.is_list());
+    }
+
+    #[test]
+    fn test_display_list() {
+        let pair = super::Pair::<ExprKind> {
+            car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                RLispNumber::Int(1),
+            ))))),
+            cdr: Some(Arc::new(ExprKind::List(Arc::new(List {
+                args: super::PairList::nil(),
+                object_id: 0,
+            })))),
+        };
+
+        let display = format!("{}", pair);
+        assert!(display.contains("1"));
+        assert!(display.contains("("));
+        assert!(display.contains(")"));
+    }
+
+    #[test]
+    fn test_display_dotted_pair() {
+        let pair = super::Pair::<ExprKind> {
+            car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                RLispNumber::Int(1),
+            ))))),
+            cdr: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                RLispNumber::Int(2),
+            ))))),
+        };
+
+        let display = format!("{}", pair);
+        assert!(display.contains("."));
+        assert!(display.contains("1"));
+        assert!(display.contains("2"));
+    }
+
+    #[test]
+    fn test_iterator_chain() {
+        // Test iterating through a chain: (1 . (2 . (3 . ())))
+        let pair = super::Pair::<ExprKind> {
+            car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                RLispNumber::Int(1),
+            ))))),
+            cdr: Some(Arc::new(ExprKind::Pair(Arc::new(super::Pair::<ExprKind> {
+                car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                    RLispNumber::Int(2),
+                ))))),
+                cdr: Some(Arc::new(ExprKind::Pair(Arc::new(super::Pair::<ExprKind> {
+                    car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                        RLispNumber::Int(3),
+                    ))))),
+                    cdr: Some(Arc::new(ExprKind::List(Arc::new(List {
+                        args: super::PairList::nil(),
+                        object_id: 0,
+                    })))),
+                })))),
+            })))),
+        };
+
+        let collected: Vec<_> = pair.into_iter().collect();
+        assert_eq!(collected.len(), 3);
     }
 }

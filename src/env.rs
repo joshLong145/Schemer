@@ -4,7 +4,7 @@ use crate::{
     op::NumericOps,
     proc::Eval,
     types::{
-        pair::Pair, Atom, ExprKind, List, Quote, RLispBoolean, RLispNumber, SymbolicExpression,
+        pair::Pair, list::PairList, Atom, ExprKind, List, Quote, RLispBoolean, RLispNumber, SymbolicExpression,
     },
 };
 use std::{collections::HashMap, sync::Arc};
@@ -128,39 +128,33 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             if exp.len() < 2 {
                 return Err("append requires at least two arguments".to_string());
             }
+
             let mut agg: Vec<ExprKind> = vec![];
-            let args = match &exp[0] {
-                ExprKind::List(l) => l.args.clone(),
-                ExprKind::Quote(q) => {
-                    if let ExprKind::List(l) = q.expr.clone() {
-                        l.args.clone()
-                    } else {
-                        return Err("first argument must be a list".to_string());
+
+            // Helper function to extract list from either quoted or unquoted list
+            let extract_list = |expr: &ExprKind| -> Result<Vec<ExprKind>, String> {
+                match expr {
+                    ExprKind::List(l) => Ok(l.args.to_vec()),
+                    ExprKind::Quote(q) => {
+                        if let ExprKind::List(l) = q.expr.clone() {
+                            Ok(l.args.to_vec())
+                        } else {
+                            Err("argument must be a list".to_string())
+                        }
                     }
+                    _ => Err("argument must be a list".to_string()),
                 }
-                _ => return Err("first argument must be a list".to_string()),
             };
 
-            debug!("current list args {:?}", args);
-            agg.extend(args.into_iter());
-
-            for e in exp[1..exp.len()].iter() {
-                if let ExprKind::Quote(ref q) = e {
-                    if let ExprKind::List(ref l) = q.expr {
-                        for el in l.args.iter() {
-                            agg.push(el.clone());
-                        }
-                    } else {
-                        return Err("invalid expression".to_string());
-                    }
-                } else {
-                    return Err("invalid expression".to_string());
-                }
+            // Process all arguments (including first one)
+            for e in exp.iter() {
+                let list_elements = extract_list(e)?;
+                agg.extend(list_elements);
             }
 
             Ok(ExprKind::Quote(Arc::new(Quote {
                 expr: ExprKind::List(Arc::new(List {
-                    args: agg,
+                    args: PairList::from_vec(agg),
                     object_id: 0,
                 })),
             })))
@@ -279,7 +273,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             }
 
             if let ExprKind::List(exp) = exp[0].clone() {
-                if exp.args.len() == 0 {
+                if exp.args.is_empty() {
                     return Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(
                         true,
                     )))));
@@ -290,7 +284,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                 }
             } else if let ExprKind::Quote(q) = exp[0].clone() {
                 if let ExprKind::List(l) = q.expr.clone() {
-                    if l.args.len() == 0 {
+                    if l.args.is_empty() {
                         return Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(
                             true,
                         )))));
@@ -318,8 +312,34 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
 
             match &exp[0] {
                 ExprKind::List(l) => Ok(ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(
-                    l.args.len() as i32,
+                    l.args.length() as i32,
                 ))))),
+                _ => Err("argument must be a list".to_string()),
+            }
+        }),
+    );
+
+    env.insert(
+        "length".to_string(),
+        Box::new(|exp, _| {
+            if exp.is_empty() {
+                return Err("len requires one argument".to_string());
+            }
+
+            match &exp[0] {
+                ExprKind::List(l) => Ok(ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(
+                    l.args.length() as i32,
+                ))))),
+                ExprKind::Quote(q) => {
+                    match &q.expr {
+                        ExprKind::List(l) => {
+                            Ok(ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(
+                                l.args.length() as i32,
+                            )))))
+                        },
+                        _ => Err("argument must be a list".to_string()),
+                    }
+                }
                 _ => Err("argument must be a list".to_string()),
             }
         }),
@@ -337,7 +357,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                     if l.args.is_empty() {
                         Err("empty list".to_string())
                     } else {
-                        Ok(l.args[0].clone())
+                        Ok(l.args.car().unwrap().as_ref().clone())
                     }
                 },
                 ExprKind::Quote(q) => {
@@ -346,7 +366,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                             if l.args.is_empty() {
                                 Err("empty list".to_string())
                             } else {
-                                Ok(l.args[0].clone())
+                                Ok(l.args.car().unwrap().as_ref().clone())
                             }
                         },
 
@@ -369,18 +389,11 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
 
             match &exp[0] {
                 ExprKind::List(l) => {
-                    if l.args.len() < 2 {
-                        if l.args.len() == 1 {
-                            Ok(ExprKind::List(Arc::new(List {
-                                args: vec![l.args[0].clone()],
-                                object_id: 0,
-                            })))
-                        } else {
-                            Err("list too short".to_string())
-                        }
+                    if l.args.is_empty() {
+                        Err("cdr: empty list".to_string())
                     } else {
                         Ok(ExprKind::List(Arc::new(List {
-                            args: l.args[1..].to_vec(),
+                            args: l.args.cdr().unwrap_or_else(PairList::nil),
                             object_id: 0,
                         })))
                     }
@@ -388,23 +401,15 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                 ExprKind::Quote(q) => {
                     match q.expr.clone() {
                         ExprKind::List(l) => {
-                            if l.args.len() < 2 {
-                                if l.args.len() == 1 {
-                                    Ok(ExprKind::List(Arc::new(List {
-                                        args: vec![l.args[0].clone()],
-                                        object_id: 0,
-                                    })))
-                                } else {
-                                    Err("list too short".to_string())
-                                }
+                            if l.args.is_empty() {
+                                Err("cdr: empty list".to_string())
                             } else {
                                 Ok(ExprKind::List(Arc::new(List {
-                                    args: l.args[1..].to_vec(),
+                                    args: l.args.cdr().unwrap_or_else(PairList::nil),
                                     object_id: 0,
                                 })))
                             }
                         },
-
                         _ => {
                             Err("argument must be a list".to_string())
                         }
@@ -595,7 +600,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
         Box::new(|exp, _| {
             Ok(ExprKind::Quote(Arc::new(Quote {
                 expr: ExprKind::List(Arc::new(List {
-                    args: exp,
+                    args: PairList::from_vec(exp),
                     object_id: 0,
                 })),
             })))
@@ -636,7 +641,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
         Box::new(|exp, _| {
             Ok(ExprKind::Quote(Arc::new(Quote {
                 expr: ExprKind::List(Arc::new(List {
-                    args: exp,
+                    args: PairList::from_vec(exp),
                     object_id: 0,
                 })),
             })))
@@ -653,24 +658,44 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                 _ => return Err("First argument to map must be a lambda".to_string()),
             };
 
+            // Extract list from quoted/unquoted list or valid pair
             let args = match &exp[1] {
+                ExprKind::List(l) => Arc::try_unwrap(l.clone()).unwrap_or_else(|arc| (*arc).clone()),
+                ExprKind::Pair(p) => {
+                    if p.is_list() {
+                        // Convert valid pair list to List
+                        List {
+                            args: PairList { head: Some(p.clone()) },
+                            object_id: 0,
+                        }
+                    } else {
+                        return Err("Second argument to map must be a proper list".to_string());
+                    }
+                },
                 ExprKind::Quote(args) => match args.expr.clone() {
                     ExprKind::List(l) => Arc::try_unwrap(l).unwrap_or_else(|arc| (*arc).clone()),
+                    ExprKind::Pair(p) => {
+                        if p.is_list() {
+                            List {
+                                args: PairList { head: Some(p) },
+                                object_id: 0,
+                            }
+                        } else {
+                            return Err("Second argument to map must be a proper list".to_string());
+                        }
+                    },
                     _ => {
-                        return Err("Invalid symbolic expression".to_string());
+                        return Err("Second argument to map must be a list".to_string());
                     }
                 },
                 _ => {
-                    return Err(format!(
-                        "Second argument to map must be a list expression {:?}",
-                        exp[1]
-                    ))
+                    return Err("Second argument to map must be a list".to_string())
                 }
             };
 
             let mut mapping_results: Vec<ExprKind> = Vec::new();
 
-            for arg in args.args.clone() {
+            for arg in args.args.to_vec() {
                 let proc =
                     ExprKind::to_proc(&ExprKind::Lambda(lambda_func.clone()), vec![arg], &env)
                         .unwrap();
@@ -680,7 +705,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
 
             Ok(ExprKind::Quote(Arc::new(Quote {
                 expr: ExprKind::List(Arc::new(List {
-                    args: mapping_results,
+                    args: PairList::from_vec(mapping_results),
                     object_id: 0,
                 })),
             })))
@@ -697,24 +722,44 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                 _ => return Err("First argument to map must be a lambda".to_string()),
             };
 
+            // Extract list from quoted/unquoted list or valid pair
             let args = match &exp[1] {
+                ExprKind::List(l) => Arc::try_unwrap(l.clone()).unwrap_or_else(|arc| (*arc).clone()),
+                ExprKind::Pair(p) => {
+                    if p.is_list() {
+                        // Convert valid pair list to List
+                        List {
+                            args: PairList { head: Some(p.clone()) },
+                            object_id: 0,
+                        }
+                    } else {
+                        return Err("Second argument to filter must be a proper list".to_string());
+                    }
+                },
                 ExprKind::Quote(args) => match args.expr.clone() {
                     ExprKind::List(l) => Arc::try_unwrap(l).unwrap_or_else(|arc| (*arc).clone()),
+                    ExprKind::Pair(p) => {
+                        if p.is_list() {
+                            List {
+                                args: PairList { head: Some(p) },
+                                object_id: 0,
+                            }
+                        } else {
+                            return Err("Second argument to filter must be a proper list".to_string());
+                        }
+                    },
                     _ => {
-                        return Err("Invalid symbolic expression".to_string());
+                        return Err("Second argument to filter must be a list".to_string());
                     }
                 },
                 _ => {
-                    return Err(format!(
-                        "Second argument to map must be a quoted list expression {:?}",
-                        exp[1]
-                    ))
+                    return Err("Second argument to filter must be a list".to_string())
                 }
             };
 
             let mut mapping_results: Vec<ExprKind> = Vec::new();
 
-            for arg in args.args.iter() {
+            for arg in args.args.to_vec().iter() {
                 let proc = ExprKind::to_proc(
                     &ExprKind::Lambda(lambda_func.clone()),
                     vec![arg.to_owned()],
@@ -739,7 +784,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
 
             Ok(ExprKind::Quote(Arc::new(Quote {
                 expr: ExprKind::List(Arc::new(List {
-                    args: mapping_results,
+                    args: PairList::from_vec(mapping_results),
                     object_id: 0,
                 })),
             })))

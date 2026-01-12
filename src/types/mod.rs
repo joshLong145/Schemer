@@ -11,7 +11,7 @@ use log::debug;
 
 use crate::{
     proc::{Proc, ProcedureFn},
-    types::pair::Pair
+    types::{pair::Pair, list::PairList}
 };
 
 pub type RLispSymbol = String;
@@ -103,7 +103,7 @@ pub struct Lambda {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct List {
-    pub args: Vec<ExprKind>,
+    pub args: PairList,
     pub object_id: u64,
 }
 
@@ -277,7 +277,7 @@ impl Display for ExprKind {
             }
             ExprKind::List(list_expr) => {
                 write!(f, "(")?;
-                for (i, expr) in list_expr.args.iter().enumerate() {
+                for (i, expr) in list_expr.args.to_vec().iter().enumerate() {
                     if i > 0 {
                         write!(f, " ")?;
                     }
@@ -402,8 +402,9 @@ impl ExprKind {
                             "mapping parameters to signature {:?} args {:?}",
                             param_list, params
                         );
-                        for i in 0..param_list.args.len() {
-                            if let ExprKind::Atom(atom) = param_list.args[i].clone() {
+                        let param_vec = param_list.args.to_vec();
+                        for i in 0..param_vec.len() {
+                            if let ExprKind::Atom(atom) = param_vec[i].clone() {
                                 if let Atom::Symbol(ref name) = *atom {
                                     param_map.insert(name.clone(), params[i].clone());
                                 } else {
@@ -449,7 +450,7 @@ impl From<SymbolicExpression> for ExprKind {
             SymbolicExpression::List(symbolic_expressions) => {
                 if symbolic_expressions.len() < 1 {
                     return ExprKind::List(Arc::new(List {
-                        args: vec![],
+                        args: PairList::nil(),
                         object_id: 0,
                     }));
                 }
@@ -504,24 +505,28 @@ impl From<SymbolicExpression> for ExprKind {
                             };
 
                             ExprKind::Cond(Arc::new(Cond {
-                                test_exps: ExprKind::List(Arc::new(List {args: test_exps, object_id: 1 })),
+                                test_exps: ExprKind::List(Arc::new(List {args: PairList::from_vec(test_exps), object_id: 1 })),
                                 else_expr,
                             }))
                         } else {
                             ExprKind::List(Arc::new(List {
-                                args: symbolic_expressions
-                                    .into_iter()
-                                    .map(ExprKind::from)
-                                    .collect(),
+                                args: PairList::from_vec(
+                                    symbolic_expressions
+                                        .into_iter()
+                                        .map(ExprKind::from)
+                                        .collect()
+                                ),
                                 object_id: 0,
                             }))
                         }
                     }
                     _ => ExprKind::List(Arc::new(List {
-                        args: symbolic_expressions
-                            .into_iter()
-                            .map(ExprKind::from)
-                            .collect(),
+                        args: PairList::from_vec(
+                            symbolic_expressions
+                                .into_iter()
+                                .map(ExprKind::from)
+                                .collect()
+                        ),
                         object_id: 0,
                     })),
                 }
@@ -529,10 +534,12 @@ impl From<SymbolicExpression> for ExprKind {
             SymbolicExpression::ListExpr(symbolic_expressions) => {
                 ExprKind::Quote(Arc::new(Quote {
                     expr: ExprKind::List(Arc::new(List {
-                        args: symbolic_expressions
-                            .into_iter()
-                            .map(ExprKind::from)
-                            .collect(),
+                        args: PairList::from_vec(
+                            symbolic_expressions
+                                .into_iter()
+                                .map(ExprKind::from)
+                                .collect()
+                        ),
                         object_id: 0,
                     })),
                 }))
