@@ -50,12 +50,21 @@ impl Iterator for Pair<ExprKind> {
 impl std::fmt::Display for Pair<ExprKind> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let car = self.car.as_ref().unwrap();
-        let cdr = self.cdr.as_ref().unwrap();
         
-        if self.is_list() {
-            write!(f, "({} {})", car, cdr)
-        } else {
-            write!(f, "({} . {})", car, cdr)
+        match &self.cdr {
+            None => {
+                // Single element list: (car)
+                write!(f, "({})", car)
+            },
+            Some(cdr) => {
+                if self.is_list() {
+                    // Proper list: (car rest...)
+                    write!(f, "({} {})", car, cdr)
+                } else {
+                    // Improper list: (car . cdr)
+                    write!(f, "({} . {})", car, cdr)
+                }
+            }
         }
     }
 }
@@ -83,21 +92,15 @@ impl Pair<ExprKind> {
             }
         }
 
-        // Check if the final cdr is a proper list terminator
-        match cursor.cdr {
-            None => false,
-            Some(cdr) => match cdr.as_ref() {
-                ExprKind::List(_) => true,
-                ExprKind::Quote(q) => matches!(q.as_ref().expr, ExprKind::List(_)),
-                _ => false,
-            },
-        }
+        // A proper list must terminate with None (nil)
+        // Anything else (including List) makes it an improper list
+        cursor.cdr.is_none()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::types::{Atom, ExprKind, List, RLispNumber};
+    use crate::types::{Atom, ExprKind, RLispNumber};
     use std::sync::Arc;
 
     #[test]
@@ -156,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_is_list_proper() {
-        // Proper list: (1 . (2 . ()))
+        // Proper list: (1 . (2 . nil))
         let pair = super::Pair::<ExprKind> {
             car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
                 RLispNumber::Int(1),
@@ -165,10 +168,7 @@ mod tests {
                 car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
                     RLispNumber::Int(2),
                 ))))),
-                cdr: Some(Arc::new(ExprKind::List(Arc::new(List {
-                    args: super::PairList::nil(),
-                    object_id: 0,
-                })))),
+                cdr: None,
             })))),
         };
 
@@ -192,20 +192,16 @@ mod tests {
 
     #[test]
     fn test_display_list() {
+        // Single element list: (1)
         let pair = super::Pair::<ExprKind> {
             car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
                 RLispNumber::Int(1),
             ))))),
-            cdr: Some(Arc::new(ExprKind::List(Arc::new(List {
-                args: super::PairList::nil(),
-                object_id: 0,
-            })))),
+            cdr: None,
         };
 
         let display = format!("{}", pair);
-        assert!(display.contains("1"));
-        assert!(display.contains("("));
-        assert!(display.contains(")"));
+        assert_eq!(display, "(1)");
     }
 
     #[test]
@@ -240,15 +236,58 @@ mod tests {
                     car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
                         RLispNumber::Int(3),
                     ))))),
-                    cdr: Some(Arc::new(ExprKind::List(Arc::new(List {
-                        args: super::PairList::nil(),
-                        object_id: 0,
-                    })))),
+                    cdr: Some(Arc::new(ExprKind::List(Arc::new(super::PairList::nil())))),
                 })))),
             })))),
         };
 
         let collected: Vec<_> = pair.into_iter().collect();
         assert_eq!(collected.len(), 3);
+    }
+
+    #[test]
+    fn test_is_list_with_nil_terminator() {
+        // Proper list with nil terminator: (1)
+        let pair = super::Pair::<ExprKind> {
+            car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                RLispNumber::Int(1),
+            ))))),
+            cdr: None,
+        };
+        assert!(pair.is_list());
+    }
+
+    #[test]
+    fn test_is_list_rejects_list_terminator() {
+        // This is now considered improper: (1 . List(...))
+        let pair = super::Pair::<ExprKind> {
+            car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                RLispNumber::Int(1),
+            ))))),
+            cdr: Some(Arc::new(ExprKind::List(Arc::new(super::PairList::nil())))),
+        };
+        assert!(!pair.is_list());
+    }
+
+    #[test]
+    fn test_display_multi_element_list() {
+        // Two element list: (1 2)
+        let pair = super::Pair::<ExprKind> {
+            car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                RLispNumber::Int(1),
+            ))))),
+            cdr: Some(Arc::new(ExprKind::Pair(Arc::new(super::Pair::<ExprKind> {
+                car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                    RLispNumber::Int(2),
+                ))))),
+                cdr: None,
+            })))),
+        };
+
+        let display = format!("{}", pair);
+        // Should display as proper list notation
+        assert!(display.contains("1"));
+        assert!(display.contains("2"));
+        assert!(!display.contains("."));
     }
 }

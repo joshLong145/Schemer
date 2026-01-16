@@ -4,7 +4,7 @@ use crate::{
     op::NumericOps,
     proc::Eval,
     types::{
-        pair::Pair, list::PairList, Atom, ExprKind, List, Quote, RLispBoolean, RLispNumber, SymbolicExpression,
+        pair::Pair, list::PairList, Atom, ExprKind, Quote, RLispBoolean, RLispNumber, SymbolicExpression,
     },
 };
 use std::{collections::HashMap, sync::Arc};
@@ -134,10 +134,10 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             // Helper function to extract list from either quoted or unquoted list
             let extract_list = |expr: &ExprKind| -> Result<Vec<ExprKind>, String> {
                 match expr {
-                    ExprKind::List(l) => Ok(l.args.to_vec()),
+                    ExprKind::List(l) => Ok(l.to_vec()),
                     ExprKind::Quote(q) => {
                         if let ExprKind::List(l) = q.expr.clone() {
-                            Ok(l.args.to_vec())
+                            Ok(l.to_vec())
                         } else {
                             Err("argument must be a list".to_string())
                         }
@@ -153,10 +153,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             }
 
             Ok(ExprKind::Quote(Arc::new(Quote {
-                expr: ExprKind::List(Arc::new(List {
-                    args: PairList::from_vec(agg),
-                    object_id: 0,
-                })),
+                expr: ExprKind::List(Arc::new(PairList::from_vec(agg))),
             })))
         }),
     );
@@ -178,11 +175,45 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                 return Err("cons requires 2 arguments".to_string());
             }
             let car = exp[0].clone();
-            let cdr = exp[1].clone();
+            let cdr_expr = exp[1].clone();
+
+            // Helper function to convert List/Quote(List) to Pair chain
+            let convert_to_cdr = |expr: ExprKind| -> Option<Arc<ExprKind>> {
+                match expr {
+                    // If cdr is a List, extract its Pair chain
+                    ExprKind::List(list) => {
+                        if let Some(pair_head) = &list.head {
+                            Some(Arc::new(ExprKind::Pair(pair_head.clone())))
+                        } else {
+                            // Empty list - proper nil terminator
+                            None
+                        }
+                    },
+                    // If cdr is a quoted List, extract its Pair chain
+                    ExprKind::Quote(q) => {
+                        if let ExprKind::List(list) = q.as_ref().expr.clone() {
+                            if let Some(pair_head) = &list.head {
+                                Some(Arc::new(ExprKind::Pair(pair_head.clone())))
+                            } else {
+                                None
+                            }
+                        } else {
+                            // Quoted non-list, wrap it
+                            Some(Arc::new(ExprKind::Quote(q)))
+                        }
+                    },
+                    // If cdr is already a Pair, use it as-is
+                    ExprKind::Pair(p) => Some(Arc::new(ExprKind::Pair(p))),
+                    // For any other type, create improper list (dotted pair)
+                    other => Some(Arc::new(other)),
+                }
+            };
+
+            let cdr = convert_to_cdr(cdr_expr);
 
             let p = Pair {
                 car: Some(Arc::new(car)),
-                cdr: Some(Arc::new(cdr)),
+                cdr,
             };
 
             Ok(ExprKind::Pair(Arc::new(p)))
@@ -273,7 +304,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             }
 
             if let ExprKind::List(exp) = exp[0].clone() {
-                if exp.args.is_empty() {
+                if exp.is_empty() {
                     return Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(
                         true,
                     )))));
@@ -284,7 +315,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                 }
             } else if let ExprKind::Quote(q) = exp[0].clone() {
                 if let ExprKind::List(l) = q.expr.clone() {
-                    if l.args.is_empty() {
+                    if l.is_empty() {
                         return Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(
                             true,
                         )))));
@@ -312,7 +343,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
 
             match &exp[0] {
                 ExprKind::List(l) => Ok(ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(
-                    l.args.length() as i32,
+                    l.length() as i32,
                 ))))),
                 _ => Err("argument must be a list".to_string()),
             }
@@ -328,13 +359,13 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
 
             match &exp[0] {
                 ExprKind::List(l) => Ok(ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(
-                    l.args.length() as i32,
+                    l.length() as i32,
                 ))))),
                 ExprKind::Quote(q) => {
                     match &q.expr {
                         ExprKind::List(l) => {
                             Ok(ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(
-                                l.args.length() as i32,
+                                l.length() as i32,
                             )))))
                         },
                         _ => Err("argument must be a list".to_string()),
@@ -354,19 +385,19 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
 
             match &exp[0] {
                 ExprKind::List(l) => {
-                    if l.args.is_empty() {
+                    if l.is_empty() {
                         Err("empty list".to_string())
                     } else {
-                        Ok(l.args.car().unwrap().as_ref().clone())
+                        Ok(l.car().unwrap().as_ref().clone())
                     }
                 },
                 ExprKind::Quote(q) => {
                     match q.expr.clone() {
                         ExprKind::List(l) => {
-                            if l.args.is_empty() {
+                            if l.is_empty() {
                                 Err("empty list".to_string())
                             } else {
-                                Ok(l.args.car().unwrap().as_ref().clone())
+                                Ok(l.car().unwrap().as_ref().clone())
                             }
                         },
 
@@ -389,25 +420,19 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
 
             match &exp[0] {
                 ExprKind::List(l) => {
-                    if l.args.is_empty() {
+                    if l.is_empty() {
                         Err("cdr: empty list".to_string())
                     } else {
-                        Ok(ExprKind::List(Arc::new(List {
-                            args: l.args.cdr().unwrap_or_else(PairList::nil),
-                            object_id: 0,
-                        })))
+                        Ok(ExprKind::List(Arc::new(l.cdr().unwrap_or_else(PairList::nil))))
                     }
                 },
                 ExprKind::Quote(q) => {
                     match q.expr.clone() {
                         ExprKind::List(l) => {
-                            if l.args.is_empty() {
+                            if l.is_empty() {
                                 Err("cdr: empty list".to_string())
                             } else {
-                                Ok(ExprKind::List(Arc::new(List {
-                                    args: l.args.cdr().unwrap_or_else(PairList::nil),
-                                    object_id: 0,
-                                })))
+                                Ok(ExprKind::List(Arc::new(l.cdr().unwrap_or_else(PairList::nil))))
                             }
                         },
                         _ => {
@@ -599,10 +624,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
         "list".to_string(),
         Box::new(|exp, _| {
             Ok(ExprKind::Quote(Arc::new(Quote {
-                expr: ExprKind::List(Arc::new(List {
-                    args: PairList::from_vec(exp),
-                    object_id: 0,
-                })),
+                expr: ExprKind::List(Arc::new(PairList::from_vec(exp))),
             })))
         }),
     );
@@ -640,10 +662,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
         "quote".to_string(),
         Box::new(|exp, _| {
             Ok(ExprKind::Quote(Arc::new(Quote {
-                expr: ExprKind::List(Arc::new(List {
-                    args: PairList::from_vec(exp),
-                    object_id: 0,
-                })),
+                expr: ExprKind::List(Arc::new(PairList::from_vec(exp))),
             })))
         }),
     );
@@ -663,11 +682,8 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                 ExprKind::List(l) => Arc::try_unwrap(l.clone()).unwrap_or_else(|arc| (*arc).clone()),
                 ExprKind::Pair(p) => {
                     if p.is_list() {
-                        // Convert valid pair list to List
-                        List {
-                            args: PairList { head: Some(p.clone()) },
-                            object_id: 0,
-                        }
+                        // Convert valid pair list to PairList
+                        PairList { head: Some(p.clone()) }
                     } else {
                         return Err("Second argument to map must be a proper list".to_string());
                     }
@@ -676,10 +692,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                     ExprKind::List(l) => Arc::try_unwrap(l).unwrap_or_else(|arc| (*arc).clone()),
                     ExprKind::Pair(p) => {
                         if p.is_list() {
-                            List {
-                                args: PairList { head: Some(p) },
-                                object_id: 0,
-                            }
+                            PairList { head: Some(p) }
                         } else {
                             return Err("Second argument to map must be a proper list".to_string());
                         }
@@ -695,7 +708,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
 
             let mut mapping_results: Vec<ExprKind> = Vec::new();
 
-            for arg in args.args.to_vec() {
+            for arg in args.to_vec() {
                 let proc =
                     ExprKind::to_proc(&ExprKind::Lambda(lambda_func.clone()), vec![arg], &env)
                         .unwrap();
@@ -704,10 +717,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             }
 
             Ok(ExprKind::Quote(Arc::new(Quote {
-                expr: ExprKind::List(Arc::new(List {
-                    args: PairList::from_vec(mapping_results),
-                    object_id: 0,
-                })),
+                expr: ExprKind::List(Arc::new(PairList::from_vec(mapping_results))),
             })))
         }),
     );
@@ -727,11 +737,8 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                 ExprKind::List(l) => Arc::try_unwrap(l.clone()).unwrap_or_else(|arc| (*arc).clone()),
                 ExprKind::Pair(p) => {
                     if p.is_list() {
-                        // Convert valid pair list to List
-                        List {
-                            args: PairList { head: Some(p.clone()) },
-                            object_id: 0,
-                        }
+                        // Convert valid pair list to PairList
+                        PairList { head: Some(p.clone()) }
                     } else {
                         return Err("Second argument to filter must be a proper list".to_string());
                     }
@@ -740,10 +747,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
                     ExprKind::List(l) => Arc::try_unwrap(l).unwrap_or_else(|arc| (*arc).clone()),
                     ExprKind::Pair(p) => {
                         if p.is_list() {
-                            List {
-                                args: PairList { head: Some(p) },
-                                object_id: 0,
-                            }
+                            PairList { head: Some(p) }
                         } else {
                             return Err("Second argument to filter must be a proper list".to_string());
                         }
@@ -759,7 +763,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
 
             let mut mapping_results: Vec<ExprKind> = Vec::new();
 
-            for arg in args.args.to_vec().iter() {
+            for arg in args.to_vec().iter() {
                 let proc = ExprKind::to_proc(
                     &ExprKind::Lambda(lambda_func.clone()),
                     vec![arg.to_owned()],
@@ -783,10 +787,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             }
 
             Ok(ExprKind::Quote(Arc::new(Quote {
-                expr: ExprKind::List(Arc::new(List {
-                    args: PairList::from_vec(mapping_results),
-                    object_id: 0,
-                })),
+                expr: ExprKind::List(Arc::new(PairList::from_vec(mapping_results))),
             })))
         }),
     );

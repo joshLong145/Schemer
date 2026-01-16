@@ -51,7 +51,7 @@ impl Eval for Proc<'_> {
 
         match &self.signature {
             ExprKind::List(list) => {
-                for param in list.args.to_vec().iter() {
+                for param in list.to_vec().iter() {
                     match param {
                         ExprKind::Atom(atom) => match atom.as_ref() {
                             Atom::Symbol(s) => {
@@ -82,7 +82,7 @@ impl Eval for Proc<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::{List, RLispNumber};
+    use crate::types::RLispNumber;
 
     use super::*;
 
@@ -136,21 +136,18 @@ mod tests {
         let proc = Proc {
             params,
             signature: ExprKind::Atom(Arc::new(Atom::Symbol("x".to_string()))),
-            body: ExprKind::List(Arc::new(List {
-                args: PairList::from_vec(vec![
-                    ExprKind::Atom(Arc::new(Atom::Symbol("x".to_string()))),
-                    ExprKind::Atom(Arc::new(Atom::Symbol("y".to_string()))),
-                ]),
-                object_id: 0,
-            })),
+            body: ExprKind::List(Arc::new(PairList::from_vec(vec![
+                ExprKind::Atom(Arc::new(Atom::Symbol("x".to_string()))),
+                ExprKind::Atom(Arc::new(Atom::Symbol("y".to_string()))),
+            ]))),
             env: &env,
         };
 
         let result = proc.proc_eval(&mut symbol_defs).unwrap();
         match result {
             ExprKind::List(list) => {
-                assert_eq!(list.args.length(), 2);
-                let args_vec = list.args.to_vec();
+                assert_eq!(list.length(), 2);
+                let args_vec = list.to_vec();
                 match &args_vec[0] {
                     ExprKind::Atom(atom) => match atom.as_ref() {
                         Atom::Number(RLispNumber::Int(n)) => assert_eq!(*n, 5),

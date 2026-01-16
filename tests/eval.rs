@@ -8,7 +8,7 @@ use schemer::{
     eval::eval,
     parser::{parse, read_from_tokens},
     proc::ProcedureFn,
-    types::{Atom, ExprKind, List, Quote, RLispBoolean, RLispNumber, list::PairList},
+    types::{Atom, ExprKind, Quote, RLispBoolean, RLispNumber, list::PairList},
 };
 
 fn setup_logging() {
@@ -95,14 +95,11 @@ fn parse_and_eval_list_append_from_proc() {
     assert_eq!(
         res,
         ExprKind::Quote(Arc::new(Quote {
-            expr: ExprKind::List(Arc::new(List {
-                args: PairList::from_vec(vec![
-                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
-                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
-                    ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
-                ]),
-                object_id: 0,
-            })),
+            expr: ExprKind::List(Arc::new(PairList::from_vec(vec![
+                ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
+                ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
+                ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
+            ]))),
         }))
     );
 }
@@ -134,14 +131,11 @@ fn parse_and_eval_list_append_list_from_proc() {
     assert_eq!(
         res,
         ExprKind::Quote(Arc::new(Quote {
-            expr: ExprKind::List(Arc::new(List {
-                args: PairList::from_vec(vec![
+            expr: ExprKind::List(Arc::new(PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(3)))),
-                ]),
-                object_id: 0,
-            })),
+                ]))),
         }))
     );
 }
@@ -171,14 +165,11 @@ fn parse_and_eval_list_append_single() {
     assert_eq!(
         res,
         ExprKind::Quote(Arc::new(Quote {
-            expr: ExprKind::List(Arc::new(List {
-                args: PairList::from_vec(vec![
+            expr: ExprKind::List(Arc::new(PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
-                ]),
-                object_id: 0,
-            })),
+                ]))),
         }))
     );
 }
@@ -208,15 +199,12 @@ fn parse_and_eval_list_append_multiple() {
     assert_eq!(
         res,
         ExprKind::Quote(Arc::new(Quote {
-            expr: ExprKind::List(Arc::new(List {
-                args: PairList::from_vec(vec![
+            expr: ExprKind::List(Arc::new(PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
-                ]),
-                object_id: 0,
-            })),
+                ]))),
         }))
     );
 }
@@ -303,14 +291,11 @@ fn parse_and_eval_map_with_lambda() {
     assert_eq!(
         res,
         ExprKind::Quote(Arc::new(Quote {
-            expr: ExprKind::List(Arc::new(List {
-                args: PairList::from_vec(vec![
+            expr: ExprKind::List(Arc::new(PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(3)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(4)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(4)))),
-                ]),
-                object_id: 0,
-            })),
+                ]))),
         }))
     );
 }
@@ -393,10 +378,7 @@ fn parse_and_eval_map_with_function_symbol() {
     assert_eq!(
         res,
         ExprKind::Quote(Arc::new(Quote {
-            expr: ExprKind::List(Arc::new(List {
-                args: PairList::from_vec(vec![ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(10))))]),
-                object_id: 0,
-            })),
+            expr: ExprKind::List(Arc::new(PairList::from_vec(vec![ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(10))))]))),
         }))
     );
 }
@@ -428,13 +410,10 @@ fn parse_and_eval_filter_with_function() {
     assert_eq!(
         res,
         ExprKind::Quote(Arc::new(Quote {
-            expr: ExprKind::List(Arc::new(List {
-                args: PairList::from_vec(vec![
+            expr: ExprKind::List(Arc::new(PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(10)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(3)))),
-                ]),
-                object_id: 0,
-            })),
+                ]))),
         }))
     );
 }
@@ -467,13 +446,10 @@ fn parse_and_eval_filter_with_function_symbol() {
     assert_eq!(
         res,
         ExprKind::Quote(Arc::new(Quote {
-            expr: ExprKind::List(Arc::new(List {
-                args: PairList::from_vec(vec![
+            expr: ExprKind::List(Arc::new(PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(10)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(3)))),
-                ]),
-                object_id: 0,
-            })),
+                ]))),
         }))
     );
 }
@@ -667,15 +643,12 @@ fn parse_and_eval_let() {
     assert_eq!(
         res,
         ExprKind::Quote(Arc::new(Quote {
-            expr: ExprKind::List(Arc::new(List {
-                args: PairList::from_vec(vec![
+            expr: ExprKind::List(Arc::new(PairList::from_vec(vec![
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(1)))),
                     ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(2)))),
-                ]),
-                object_id: 0,
-            })),
+                ]))),
         }))
     );
 }

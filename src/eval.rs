@@ -3,7 +3,7 @@ use tailcall::tailcall;
 
 use crate::{
     proc::Eval,
-    types::{pair::Pair, list::PairList, Atom, Begin, Cond, Define, ExprKind, If, Lambda, Let, List, Quote, RLispBoolean},
+    types::{pair::Pair, list::PairList, Atom, Begin, Cond, Define, ExprKind, If, Lambda, Let, Quote, RLispBoolean},
 };
 use std::{collections::HashMap, sync::Arc};
 
@@ -107,19 +107,19 @@ fn eval_cond(
     let mut was_flipped = false;
     match cond_expr.test_exps {
         ExprKind::List(tests) => {
-            let tests_vec = tests.args.to_vec();
+            let tests_vec = tests.to_vec();
             for test in tests_vec.iter() {
                 let test_res = match test {
                     ExprKind::List(l) => {
-                        if l.args.length() < 2 {
+                        if l.length() < 2 {
                             return Err("invalid test expression".to_string());
                         }
-                        let test_exp = l.args.nth(0).ok_or("missing test expression")?.as_ref().clone();
+                        let test_exp = l.nth(0).ok_or("missing test expression")?.as_ref().clone();
                         let test_res = eval(test_exp, env, symbol_definitions)?;
                         if let ExprKind::Atom(maybe_bool) = test_res {
                             match maybe_bool.as_ref() {
                                 Atom::Bool(b) => {
-                                    (b.clone(), l.args.nth(1).ok_or("missing result expression")?.as_ref().clone())
+                                    (b.clone(), l.nth(1).ok_or("missing result expression")?.as_ref().clone())
                                 },
                                 _ => {
                                     return Err("cond test expression must return a boolean".to_string());
@@ -206,16 +206,16 @@ fn eval_lambda(
 
 #[tailcall]
 fn eval_list(
-    list: List,
+    list: PairList,
     env: &HashMap<String, ProcedureFn>,
     symbol_definitions: &mut HashMap<String, ExprKind>,
 ) -> Result<ExprKind, String> {
-    if list.args.is_empty() {
+    if list.is_empty() {
         return Ok(ExprKind::List(Arc::new(list)));
     }
 
     let mut evaluated_args = Vec::new();
-    let args_vec = list.args.to_vec();
+    let args_vec = list.to_vec();
     let operator = &args_vec[0];
 
     // If the first element is a symbol, check if it's a procedure
@@ -263,10 +263,7 @@ fn eval_list(
         evaluated_args.push(evaluated);
     }
     debug!("resulting list {:?}", evaluated_args);
-    Ok(ExprKind::List(Arc::new(List {
-        args: PairList::from_vec(evaluated_args),
-        object_id: list.object_id,
-    })))
+    Ok(ExprKind::List(Arc::new(PairList::from_vec(evaluated_args))))
 }
 
 #[tailcall]
@@ -280,7 +277,7 @@ fn eval_let(
     local_symbols.extend(symbol_definitions.clone());
 
     if let ExprKind::List(defines) = let_expr.declerations {
-        for def in defines.args.to_vec().iter() {
+        for def in defines.to_vec().iter() {
             let _ = eval(def.clone(), env, &mut local_symbols);
         }
 
@@ -291,10 +288,7 @@ fn eval_let(
         }
     }
 
-    Ok(ExprKind::List(Arc::new(List {
-        args: PairList::nil(),
-        object_id: 0,
-    })))
+    Ok(ExprKind::List(Arc::new(PairList::nil())))
 }
 
 fn eval_pair(
@@ -326,17 +320,13 @@ pub fn resolve_symbol_if_present(
                 .unwrap_or_else(|| expr.clone()),
             _ => expr.clone(),
         },
-        ExprKind::List(list) => ExprKind::List(Arc::new(List {
-            args: PairList::from_vec(
-                list
-                    .args
-                    .to_vec()
-                    .iter()
-                    .map(|e| resolve_symbol_if_present(e, symbol_definitions, env))
-                    .collect()
-            ),
-            object_id: list.object_id,
-        })),
+        ExprKind::List(list) => ExprKind::List(Arc::new(PairList::from_vec(
+            list
+                .to_vec()
+                .iter()
+                .map(|e| resolve_symbol_if_present(e, symbol_definitions, env))
+                .collect()
+        ))),
         ExprKind::Lambda(lambda) => ExprKind::Lambda(Arc::new(Lambda {
             args: lambda.args.clone(),
             body: resolve_symbol_if_present(&lambda.body, symbol_definitions, env),
