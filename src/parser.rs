@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, VecDeque}};
+use std::collections::{HashMap, VecDeque};
 
 use crate::{
     error::ParserError,
@@ -50,7 +50,7 @@ pub fn read_from_tokens(tokens: &mut Tokens) -> Result<SymbolicExpression, Parse
                     }
 
                     return Ok(l);
-                },
+                }
                 _ => {}
             }
 
