@@ -20,7 +20,7 @@ cargo run --bin schemer
 
 Providing a file to the enviroment:
 ```sh
-cargo run --bin schemer -- --path examples/game-of-life.scm
+cargo run --bin schemer -- --path <path/to/file> 
 ```
 
 **install scripts are not yet created, the same options are availble on the binraries within `./target`**
