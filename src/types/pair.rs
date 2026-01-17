@@ -1,4 +1,4 @@
-use crate::types::{ExprKind, list::PairList};
+use crate::types::ExprKind;
 use std::sync::Arc;
 
 pub trait Node {}
@@ -25,7 +25,7 @@ impl Iterator for Pair<ExprKind> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let curr = self.car.clone();
-        
+
         match self.cdr.clone() {
             Some(cdr) => match cdr.as_ref() {
                 ExprKind::Pair(p) => {
@@ -50,12 +50,12 @@ impl Iterator for Pair<ExprKind> {
 impl std::fmt::Display for Pair<ExprKind> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let car = self.car.as_ref().unwrap();
-        
+
         match &self.cdr {
             None => {
                 // Single element list: (car)
                 write!(f, "({})", car)
-            },
+            }
             Some(cdr) => {
                 if self.is_list() {
                     // Proper list: (car rest...)
@@ -100,7 +100,7 @@ impl Pair<ExprKind> {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::{Atom, ExprKind, RLispNumber};
+    use crate::types::{list::PairList, Atom, ExprKind, RLispNumber};
     use std::sync::Arc;
 
     #[test]
@@ -109,12 +109,14 @@ mod tests {
             car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
                 RLispNumber::Int(1),
             ))))),
-            cdr: Some(Arc::new(ExprKind::Pair(Arc::new(super::Pair::<ExprKind> {
-                car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
-                    RLispNumber::Int(2),
-                ))))),
-                cdr: None,
-            })))),
+            cdr: Some(Arc::new(ExprKind::Pair(Arc::new(
+                super::Pair::<ExprKind> {
+                    car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                        RLispNumber::Int(2),
+                    ))))),
+                    cdr: None,
+                },
+            )))),
         };
 
         let mut i = 0;
@@ -164,12 +166,14 @@ mod tests {
             car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
                 RLispNumber::Int(1),
             ))))),
-            cdr: Some(Arc::new(ExprKind::Pair(Arc::new(super::Pair::<ExprKind> {
-                car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
-                    RLispNumber::Int(2),
-                ))))),
-                cdr: None,
-            })))),
+            cdr: Some(Arc::new(ExprKind::Pair(Arc::new(
+                super::Pair::<ExprKind> {
+                    car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                        RLispNumber::Int(2),
+                    ))))),
+                    cdr: None,
+                },
+            )))),
         };
 
         assert!(pair.is_list());
@@ -228,17 +232,21 @@ mod tests {
             car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
                 RLispNumber::Int(1),
             ))))),
-            cdr: Some(Arc::new(ExprKind::Pair(Arc::new(super::Pair::<ExprKind> {
-                car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
-                    RLispNumber::Int(2),
-                ))))),
-                cdr: Some(Arc::new(ExprKind::Pair(Arc::new(super::Pair::<ExprKind> {
+            cdr: Some(Arc::new(ExprKind::Pair(Arc::new(
+                super::Pair::<ExprKind> {
                     car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
-                        RLispNumber::Int(3),
+                        RLispNumber::Int(2),
                     ))))),
-                    cdr: Some(Arc::new(ExprKind::List(Arc::new(super::PairList::nil())))),
-                })))),
-            })))),
+                    cdr: Some(Arc::new(ExprKind::Pair(Arc::new(
+                        super::Pair::<ExprKind> {
+                            car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                                RLispNumber::Int(3),
+                            ))))),
+                            cdr: Some(Arc::new(ExprKind::List(Arc::new(PairList::nil())))),
+                        },
+                    )))),
+                },
+            )))),
         };
 
         let collected: Vec<_> = pair.into_iter().collect();
@@ -264,7 +272,7 @@ mod tests {
             car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
                 RLispNumber::Int(1),
             ))))),
-            cdr: Some(Arc::new(ExprKind::List(Arc::new(super::PairList::nil())))),
+            cdr: Some(Arc::new(ExprKind::List(Arc::new(PairList::nil())))),
         };
         assert!(!pair.is_list());
     }
@@ -276,12 +284,14 @@ mod tests {
             car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
                 RLispNumber::Int(1),
             ))))),
-            cdr: Some(Arc::new(ExprKind::Pair(Arc::new(super::Pair::<ExprKind> {
-                car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
-                    RLispNumber::Int(2),
-                ))))),
-                cdr: None,
-            })))),
+            cdr: Some(Arc::new(ExprKind::Pair(Arc::new(
+                super::Pair::<ExprKind> {
+                    car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
+                        RLispNumber::Int(2),
+                    ))))),
+                    cdr: None,
+                },
+            )))),
         };
 
         let display = format!("{}", pair);

@@ -1,25 +1,21 @@
-use log::debug;
-
 use crate::{
-    op::NumericOps,
-    proc::Eval,
-    types::{
-        pair::Pair, list::PairList, Atom, ExprKind, Quote, RLispBoolean, RLispNumber, SymbolicExpression,
-    },
+    eval::apply_proc_to_arg,
+    op::ValueNumericOps,
+    types::{Number, Value},
 };
 use std::{collections::HashMap, sync::Arc};
 
-pub fn std_const_exp() -> HashMap<String, ExprKind> {
+pub type ProcedureFn =
+    Box<dyn Fn(Vec<Value>, &mut HashMap<String, Value>) -> Result<Value, String>>;
+
+pub fn std_const_exp() -> HashMap<String, Value> {
     let mut const_exps = HashMap::new();
     const_exps.insert(
         "pi".to_string(),
-        ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Float(3.14)))),
+        Value::Number(Number::Float(std::f64::consts::PI)),
     );
     const_exps
 }
-
-type ProcedureFn =
-    Box<dyn Fn(Vec<ExprKind>, &mut HashMap<String, ExprKind>) -> Result<ExprKind, String>>;
 
 pub fn std_env() -> HashMap<String, ProcedureFn> {
     let mut env: HashMap<String, ProcedureFn> = HashMap::new();
@@ -27,770 +23,405 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
     // Arithmetic operations
     env.insert(
         "+".to_string(),
-        Box::new(|exp, _| -> Result<ExprKind, String> {
-            if exp.len() < 2 {
+        Box::new(|args, _| {
+            if args.len() < 2 {
                 return Err("+ requires at least two arguments".to_string());
             }
-
-            let l = match &exp[0] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            let r = match &exp[1] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            match l.add(r)? {
-                SymbolicExpression::Atom(a) => Ok(ExprKind::Atom(Arc::new(Atom::from(a)))),
-                _ => Err("invalid addition result".to_string()),
-            }
+            args[0].add(&args[1])
         }),
     );
 
     env.insert(
         "-".to_string(),
-        Box::new(|exp, _| -> Result<ExprKind, String> {
-            if exp.len() < 2 {
+        Box::new(|args, _| {
+            if args.len() < 2 {
                 return Err("- requires at least two arguments".to_string());
             }
-
-            let l = match &exp[0] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            let r = match &exp[1] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            match l.sub(r)? {
-                SymbolicExpression::Atom(a) => Ok(ExprKind::Atom(Arc::new(Atom::from(a)))),
-                _ => Err("invalid subtraction result".to_string()),
-            }
+            args[0].sub(&args[1])
         }),
     );
 
     env.insert(
         "*".to_string(),
-        Box::new(|exp, _| -> Result<ExprKind, String> {
-            if exp.len() < 2 {
+        Box::new(|args, _| {
+            if args.len() < 2 {
                 return Err("* requires at least two arguments".to_string());
             }
-
-            let l = match &exp[0] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            let r = match &exp[1] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            match l.mul(r)? {
-                SymbolicExpression::Atom(a) => Ok(ExprKind::Atom(Arc::new(Atom::from(a)))),
-                _ => Err("invalid multiplication result".to_string()),
-            }
+            args[0].mul(&args[1])
         }),
     );
 
     env.insert(
         "/".to_string(),
-        Box::new(|exp, _| -> Result<ExprKind, String> {
-            if exp.len() < 2 {
+        Box::new(|args, _| {
+            if args.len() < 2 {
                 return Err("/ requires at least two arguments".to_string());
             }
-
-            let l = match &exp[0] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            let r = match &exp[1] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            match l.div(r)? {
-                SymbolicExpression::Atom(a) => Ok(ExprKind::Atom(Arc::new(Atom::from(a)))),
-                _ => Err("invalid division result".to_string()),
-            }
-        }),
-    );
-
-    // List operations
-    env.insert(
-        "append".to_string(),
-        Box::new(|exp, _| {
-            if exp.len() < 2 {
-                return Err("append requires at least two arguments".to_string());
-            }
-
-            let mut agg: Vec<ExprKind> = vec![];
-
-            // Helper function to extract list from either quoted or unquoted list
-            let extract_list = |expr: &ExprKind| -> Result<Vec<ExprKind>, String> {
-                match expr {
-                    ExprKind::List(l) => Ok(l.to_vec()),
-                    ExprKind::Quote(q) => {
-                        if let ExprKind::List(l) = q.expr.clone() {
-                            Ok(l.to_vec())
-                        } else {
-                            Err("argument must be a list".to_string())
-                        }
-                    }
-                    _ => Err("argument must be a list".to_string()),
-                }
-            };
-
-            // Process all arguments (including first one)
-            for e in exp.iter() {
-                let list_elements = extract_list(e)?;
-                agg.extend(list_elements);
-            }
-
-            Ok(ExprKind::Quote(Arc::new(Quote {
-                expr: ExprKind::List(Arc::new(PairList::from_vec(agg))),
-            })))
-        }),
-    );
-
-    env.insert(
-        "begin".to_string(),
-        Box::new(|exp, _| {
-            if exp.is_empty() {
-                return Err("begin requires at least one expression".to_string());
-            }
-            Ok(exp[exp.len() - 1].clone())
-        }),
-    );
-
-    env.insert(
-        "cons".to_string(),
-        Box::new(|exp, _| {
-            if exp.len() != 2 {
-                return Err("cons requires 2 arguments".to_string());
-            }
-            let car = exp[0].clone();
-            let cdr_expr = exp[1].clone();
-
-            // Helper function to convert List/Quote(List) to Pair chain
-            let convert_to_cdr = |expr: ExprKind| -> Option<Arc<ExprKind>> {
-                match expr {
-                    // If cdr is a List, extract its Pair chain
-                    ExprKind::List(list) => {
-                        if let Some(pair_head) = &list.head {
-                            Some(Arc::new(ExprKind::Pair(pair_head.clone())))
-                        } else {
-                            // Empty list - proper nil terminator
-                            None
-                        }
-                    },
-                    // If cdr is a quoted List, extract its Pair chain
-                    ExprKind::Quote(q) => {
-                        if let ExprKind::List(list) = q.as_ref().expr.clone() {
-                            if let Some(pair_head) = &list.head {
-                                Some(Arc::new(ExprKind::Pair(pair_head.clone())))
-                            } else {
-                                None
-                            }
-                        } else {
-                            // Quoted non-list, wrap it
-                            Some(Arc::new(ExprKind::Quote(q)))
-                        }
-                    },
-                    // If cdr is already a Pair, use it as-is
-                    ExprKind::Pair(p) => Some(Arc::new(ExprKind::Pair(p))),
-                    // For any other type, create improper list (dotted pair)
-                    other => Some(Arc::new(other)),
-                }
-            };
-
-            let cdr = convert_to_cdr(cdr_expr);
-
-            let p = Pair {
-                car: Some(Arc::new(car)),
-                cdr,
-            };
-
-            Ok(ExprKind::Pair(Arc::new(p)))
-        }),
-    );
-
-    // I/O operations
-    env.insert(
-        "display".to_string(),
-        Box::new(|exp, _| {
-            for expr in exp.iter() {
-                println!("{}", expr);
-            }
-            Ok(ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(0)))))
-        }),
-    );
-
-    // Type predicates
-    env.insert(
-        "number?".to_string(),
-        Box::new(|exp, _| {
-            if exp.is_empty() {
-                return Err("number? requires one argument".to_string());
-            }
-
-            match &exp[0] {
-                ExprKind::Atom(a) => match a.as_ref() {
-                    Atom::Number(_) => Ok(ExprKind::Atom(Arc::new(Atom::Bool(
-                        RLispBoolean::True(true),
-                    )))),
-                    _ => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(
-                        false,
-                    ))))),
-                },
-                _ => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(
-                    false,
-                ))))),
-            }
-        }),
-    );
-
-    env.insert(
-        "list?".to_string(),
-        Box::new(|exp, _| {
-            if exp.is_empty() {
-                return Err("list? requires one argument".to_string());
-            }
-
-            match &exp[0] {
-                ExprKind::List(_) => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(
-                    true,
-                ))))),
-                _ => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(
-                    false,
-                ))))),
-            }
-        }),
-    );
-
-    env.insert(
-        "bool?".to_string(),
-        Box::new(|exp, _| {
-            if exp.is_empty() {
-                return Err("bool? requires one argument".to_string());
-            }
-
-            match &exp[0] {
-                ExprKind::Atom(a) => match a.as_ref() {
-                    Atom::Bool(_) => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(
-                        true,
-                    ))))),
-                    _ => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(
-                        false,
-                    ))))),
-                },
-                _ => Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(
-                    false,
-                ))))),
-            }
-        }),
-    );
-
-    env.insert(
-        "null?".to_string(),
-        Box::new(|exp, _| {
-            if exp.is_empty() {
-                return Err("bool? requires one argument".to_string());
-            }
-
-            if let ExprKind::List(exp) = exp[0].clone() {
-                if exp.is_empty() {
-                    return Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(
-                        true,
-                    )))));
-                } else {
-                    return Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(
-                        false,
-                    )))));
-                }
-            } else if let ExprKind::Quote(q) = exp[0].clone() {
-                if let ExprKind::List(l) = q.expr.clone() {
-                    if l.is_empty() {
-                        return Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::True(
-                            true,
-                        )))));
-                    } else {
-                        return Ok(ExprKind::Atom(Arc::new(Atom::Bool(RLispBoolean::False(
-                            false,
-                        )))));
-                    }
-                } else {
-                    return Err("invalid expression".to_string());
-                }
-            } else {
-                return Err("invalid expression".to_string());
-            }
-        }),
-    );
-
-    // List operations
-    env.insert(
-        "len".to_string(),
-        Box::new(|exp, _| {
-            if exp.is_empty() {
-                return Err("len requires one argument".to_string());
-            }
-
-            match &exp[0] {
-                ExprKind::List(l) => Ok(ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(
-                    l.length() as i32,
-                ))))),
-                _ => Err("argument must be a list".to_string()),
-            }
-        }),
-    );
-
-    env.insert(
-        "length".to_string(),
-        Box::new(|exp, _| {
-            if exp.is_empty() {
-                return Err("len requires one argument".to_string());
-            }
-
-            match &exp[0] {
-                ExprKind::List(l) => Ok(ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(
-                    l.length() as i32,
-                ))))),
-                ExprKind::Quote(q) => {
-                    match &q.expr {
-                        ExprKind::List(l) => {
-                            Ok(ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(
-                                l.length() as i32,
-                            )))))
-                        },
-                        _ => Err("argument must be a list".to_string()),
-                    }
-                }
-                _ => Err("argument must be a list".to_string()),
-            }
-        }),
-    );
-
-    env.insert(
-        "car".to_string(),
-        Box::new(|exp, _| {
-            if exp.is_empty() {
-                return Err("car requires one argument".to_string());
-            }
-
-            match &exp[0] {
-                ExprKind::List(l) => {
-                    if l.is_empty() {
-                        Err("empty list".to_string())
-                    } else {
-                        Ok(l.car().unwrap().as_ref().clone())
-                    }
-                },
-                ExprKind::Quote(q) => {
-                    match q.expr.clone() {
-                        ExprKind::List(l) => {
-                            if l.is_empty() {
-                                Err("empty list".to_string())
-                            } else {
-                                Ok(l.car().unwrap().as_ref().clone())
-                            }
-                        },
-
-                        _ => {
-                            Err("argument must be a list".to_string())
-                        }
-                    }
-                },
-                _ => Err("argument must be a list".to_string()),
-            }
-        }),
-    );
-
-    env.insert(
-        "cdr".to_string(),
-        Box::new(|exp, _| {
-            if exp.is_empty() {
-                return Err("cdr requires one argument".to_string());
-            }
-
-            match &exp[0] {
-                ExprKind::List(l) => {
-                    if l.is_empty() {
-                        Err("cdr: empty list".to_string())
-                    } else {
-                        Ok(ExprKind::List(Arc::new(l.cdr().unwrap_or_else(PairList::nil))))
-                    }
-                },
-                ExprKind::Quote(q) => {
-                    match q.expr.clone() {
-                        ExprKind::List(l) => {
-                            if l.is_empty() {
-                                Err("cdr: empty list".to_string())
-                            } else {
-                                Ok(ExprKind::List(Arc::new(l.cdr().unwrap_or_else(PairList::nil))))
-                            }
-                        },
-                        _ => {
-                            Err("argument must be a list".to_string())
-                        }
-                    }
-                },
-                _ => Err("argument must be a list".to_string()),
-            }
+            args[0].div(&args[1])
         }),
     );
 
     // Comparison operations
     env.insert(
         "<".to_string(),
-        Box::new(|exp, _| -> Result<ExprKind, String> {
-            if exp.len() < 2 {
+        Box::new(|args, _| {
+            if args.len() < 2 {
                 return Err("< requires at least two arguments".to_string());
             }
-
-            let l = match &exp[0] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            let r = match &exp[1] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            Ok(ExprKind::Atom(Arc::new(Atom::Bool(if l < r {
-                RLispBoolean::True(true)
-            } else {
-                RLispBoolean::False(false)
-            }))))
+            match (&args[0], &args[1]) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Boolean(l < r)),
+                _ => Err("< requires numeric arguments".to_string()),
+            }
         }),
     );
 
     env.insert(
         ">".to_string(),
-        Box::new(|exp, _| -> Result<ExprKind, String> {
-            if exp.len() < 2 {
+        Box::new(|args, _| {
+            if args.len() < 2 {
                 return Err("> requires at least two arguments".to_string());
             }
-
-            let l = match &exp[0] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            let r = match &exp[1] {
-                ExprKind::Atom(a) => a.as_ref().clone(),
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            Ok(ExprKind::Atom(Arc::new(Atom::Bool(if l > r {
-                RLispBoolean::True(true)
-            } else {
-                RLispBoolean::False(false)
-            }))))
+            match (&args[0], &args[1]) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Boolean(l > r)),
+                _ => Err("> requires numeric arguments".to_string()),
+            }
         }),
     );
 
     env.insert(
         "=".to_string(),
-        Box::new(|exp, _| -> Result<ExprKind, String> {
-            if exp.len() < 2 {
-                return Err("> requires at least two arguments".to_string());
+        Box::new(|args, _| {
+            if args.len() < 2 {
+                return Err("= requires at least two arguments".to_string());
             }
-
-            let l = &exp[0];
-            let r = &exp[1];
-
-            Ok(ExprKind::Atom(Arc::new(Atom::Bool(if l == r {
-                RLispBoolean::True(true)
-            } else {
-                RLispBoolean::False(false)
-            }))))
+            Ok(Value::Boolean(args[0] == args[1]))
         }),
     );
 
+    // Boolean operations
     env.insert(
         "and".to_string(),
-        Box::new(|exp, _| -> Result<ExprKind, String> {
-            if exp.len() < 2 {
-                return Err("> requires at least two arguments".to_string());
+        Box::new(|args, _| {
+            if args.len() < 2 {
+                return Err("and requires at least two arguments".to_string());
             }
-
-            let l = match &exp[0] {
-                ExprKind::Atom(a) => match *a.to_owned() {
-                    Atom::Bool(ref rlisp_boolean) => match rlisp_boolean {
-                        RLispBoolean::True(_) => true,
-                        RLispBoolean::False(_) => false,
-                    },
-                    _ => return Err("invalid expression".to_string()),
-                },
-
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            let r = match &exp[1] {
-                ExprKind::Atom(a) => match *a.to_owned() {
-                    Atom::Bool(ref rlisp_boolean) => match rlisp_boolean {
-                        RLispBoolean::True(_) => true,
-                        RLispBoolean::False(_) => false,
-                    },
-                    _ => return Err("invalid expression".to_string()),
-                },
-
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            Ok(ExprKind::Atom(Arc::new(Atom::Bool(if l && r {
-                RLispBoolean::True(true)
-            } else {
-                RLispBoolean::False(false)
-            }))))
+            Ok(Value::Boolean(args[0].is_truthy() && args[1].is_truthy()))
         }),
     );
 
     env.insert(
         "or".to_string(),
-        Box::new(|exp, _| -> Result<ExprKind, String> {
-            if exp.len() < 2 {
-                return Err("> requires at least two arguments".to_string());
+        Box::new(|args, _| {
+            if args.len() < 2 {
+                return Err("or requires at least two arguments".to_string());
             }
-
-            let l = match &exp[0] {
-                ExprKind::Atom(a) => match *a.to_owned() {
-                    Atom::Bool(ref rlisp_boolean) => match rlisp_boolean {
-                        RLispBoolean::True(_) => true,
-                        RLispBoolean::False(_) => false,
-                    },
-                    _ => return Err("invalid expression".to_string()),
-                },
-
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            let r = match &exp[1] {
-                ExprKind::Atom(a) => match *a.to_owned() {
-                    Atom::Bool(ref rlisp_boolean) => match rlisp_boolean {
-                        RLispBoolean::True(_) => true,
-                        RLispBoolean::False(_) => false,
-                    },
-                    _ => return Err("invalid expression".to_string()),
-                },
-
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            Ok(ExprKind::Atom(Arc::new(Atom::Bool(if l || r {
-                RLispBoolean::True(true)
-            } else {
-                RLispBoolean::False(false)
-            }))))
+            Ok(Value::Boolean(args[0].is_truthy() || args[1].is_truthy()))
         }),
     );
 
     env.insert(
         "not".to_string(),
-        Box::new(|exp, _| -> Result<ExprKind, String> {
-            if exp.len() < 1 {
-                return Err("> requires at least two arguments".to_string());
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("not requires one argument".to_string());
             }
-
-            let r = match &exp[0] {
-                ExprKind::Atom(a) => match *a.to_owned() {
-                    Atom::Bool(ref rlisp_boolean) => match rlisp_boolean {
-                        RLispBoolean::True(_) => true,
-                        RLispBoolean::False(_) => false,
-                    },
-                    _ => return Err("invalid expression".to_string()),
-                },
-
-                _ => return Err("invalid expression".to_string()),
-            };
-
-            Ok(ExprKind::Atom(Arc::new(Atom::Bool(if !r {
-                RLispBoolean::True(true)
-            } else {
-                RLispBoolean::False(false)
-            }))))
+            Ok(Value::Boolean(!args[0].is_truthy()))
         }),
     );
 
-    // List creation and manipulation
+    // Type predicates
+    env.insert(
+        "number?".to_string(),
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("number? requires one argument".to_string());
+            }
+            Ok(Value::Boolean(matches!(args[0], Value::Number(_))))
+        }),
+    );
+
+    env.insert(
+        "boolean?".to_string(),
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("boolean? requires one argument".to_string());
+            }
+            Ok(Value::Boolean(matches!(args[0], Value::Boolean(_))))
+        }),
+    );
+
+    env.insert(
+        "string?".to_string(),
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("string? requires one argument".to_string());
+            }
+            Ok(Value::Boolean(matches!(args[0], Value::String(_))))
+        }),
+    );
+
+    env.insert(
+        "procedure?".to_string(),
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("procedure? requires one argument".to_string());
+            }
+            Ok(Value::Boolean(matches!(args[0], Value::Procedure(_))))
+        }),
+    );
+
+    env.insert(
+        "pair?".to_string(),
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("pair? requires one argument".to_string());
+            }
+            Ok(Value::Boolean(matches!(args[0], Value::Pair(_))))
+        }),
+    );
+
+    env.insert(
+        "null?".to_string(),
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("null? requires one argument".to_string());
+            }
+            Ok(Value::Boolean(matches!(args[0], Value::Nil)))
+        }),
+    );
+
+    env.insert(
+        "list?".to_string(),
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("list? requires one argument".to_string());
+            }
+            Ok(Value::Boolean(is_list(&args[0])))
+        }),
+    );
+
+    env.insert(
+        "symbol?".to_string(),
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("symbol? requires one argument".to_string());
+            }
+            Ok(Value::Boolean(matches!(args[0], Value::Symbol(_))))
+        }),
+    );
+
+    // List operations
+    env.insert(
+        "cons".to_string(),
+        Box::new(|args, _| {
+            if args.len() != 2 {
+                return Err("cons requires 2 arguments".to_string());
+            }
+            Ok(Value::Pair(Arc::new((args[0].clone(), args[1].clone()))))
+        }),
+    );
+
+    env.insert(
+        "car".to_string(),
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("car requires one argument".to_string());
+            }
+            match &args[0] {
+                Value::Pair(p) => Ok(p.0.clone()),
+                Value::Nil => Err("car: empty list".to_string()),
+                _ => Err("car: argument must be a pair".to_string()),
+            }
+        }),
+    );
+
+    env.insert(
+        "cdr".to_string(),
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("cdr requires one argument".to_string());
+            }
+            match &args[0] {
+                Value::Pair(p) => Ok(p.1.clone()),
+                Value::Nil => Err("cdr: empty list".to_string()),
+                _ => Err("cdr: argument must be a pair".to_string()),
+            }
+        }),
+    );
+
     env.insert(
         "list".to_string(),
-        Box::new(|exp, _| {
-            Ok(ExprKind::Quote(Arc::new(Quote {
-                expr: ExprKind::List(Arc::new(PairList::from_vec(exp))),
-            })))
+        Box::new(|args, _| Ok(vec_to_list(args))),
+    );
+
+    env.insert(
+        "length".to_string(),
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("length requires one argument".to_string());
+            }
+            let len = list_length(&args[0])?;
+            Ok(Value::Number(Number::Int(len)))
         }),
     );
 
     env.insert(
-        "string".to_string(),
-        Box::new(|exp, _| {
-            let mut s = String::new();
-            for c in exp.iter() {
-                s = format!("{}{}", s, c);
+        "append".to_string(),
+        Box::new(|args, _| {
+            if args.len() < 2 {
+                return Err("append requires at least two arguments".to_string());
             }
-
-            Ok(ExprKind::StringLiteral(Arc::new(s)))
+            let mut result: Vec<Value> = Vec::new();
+            for arg in args.iter() {
+                let elements = list_to_vec(arg)?;
+                result.extend(elements);
+            }
+            Ok(vec_to_list(result))
         }),
     );
 
-    // Evaluation
+    // I/O
     env.insert(
-        "eval".to_string(),
-        Box::new(|exp, symbol_defs| {
-            if exp.is_empty() {
-                return Err("eval requires one argument".to_string());
+        "display".to_string(),
+        Box::new(|args, _| {
+            for arg in args.iter() {
+                print!("{}", arg);
             }
-
-            let list = exp[0].clone();
-            if let ExprKind::Quote(q_exp) = list {
-                crate::eval::eval(q_exp.expr.clone(), &std_env(), symbol_defs)
-            } else {
-                Err("invalid expression".to_string())
-            }
+            Ok(Value::Void)
         }),
     );
 
     env.insert(
-        "quote".to_string(),
-        Box::new(|exp, _| {
-            Ok(ExprKind::Quote(Arc::new(Quote {
-                expr: ExprKind::List(Arc::new(PairList::from_vec(exp))),
-            })))
+        "newline".to_string(),
+        Box::new(|_, _| {
+            println!();
+            Ok(Value::Void)
         }),
     );
 
+    // Exactness predicates
+    env.insert(
+        "exact?".to_string(),
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("exact? requires one argument".to_string());
+            }
+            Ok(Value::Boolean(matches!(
+                args[0],
+                Value::Number(Number::Int(_))
+            )))
+        }),
+    );
+
+    env.insert(
+        "inexact?".to_string(),
+        Box::new(|args, _| {
+            if args.is_empty() {
+                return Err("inexact? requires one argument".to_string());
+            }
+            Ok(Value::Boolean(matches!(
+                args[0],
+                Value::Number(Number::Float(_))
+            )))
+        }),
+    );
+
+    // Higher-order functions
     env.insert(
         "map".to_string(),
-        Box::new(|exp, sd| {
-            let env = std_env();
-
-            let lambda_func = match &exp[0] {
-                ExprKind::Lambda(lambda_exp) => lambda_exp.clone(),
-                _ => return Err("First argument to map must be a lambda".to_string()),
-            };
-
-            // Extract list from quoted/unquoted list or valid pair
-            let args = match &exp[1] {
-                ExprKind::List(l) => Arc::try_unwrap(l.clone()).unwrap_or_else(|arc| (*arc).clone()),
-                ExprKind::Pair(p) => {
-                    if p.is_list() {
-                        // Convert valid pair list to PairList
-                        PairList { head: Some(p.clone()) }
-                    } else {
-                        return Err("Second argument to map must be a proper list".to_string());
-                    }
-                },
-                ExprKind::Quote(args) => match args.expr.clone() {
-                    ExprKind::List(l) => Arc::try_unwrap(l).unwrap_or_else(|arc| (*arc).clone()),
-                    ExprKind::Pair(p) => {
-                        if p.is_list() {
-                            PairList { head: Some(p) }
-                        } else {
-                            return Err("Second argument to map must be a proper list".to_string());
-                        }
-                    },
-                    _ => {
-                        return Err("Second argument to map must be a list".to_string());
-                    }
-                },
-                _ => {
-                    return Err("Second argument to map must be a list".to_string())
-                }
-            };
-
-            let mut mapping_results: Vec<ExprKind> = Vec::new();
-
-            for arg in args.to_vec() {
-                let proc =
-                    ExprKind::to_proc(&ExprKind::Lambda(lambda_func.clone()), vec![arg], &env)
-                        .unwrap();
-                let result = proc.proc_eval(sd).unwrap();
-                mapping_results.push(result);
+        Box::new(|args, sd| {
+            if args.len() != 2 {
+                return Err("map requires 2 arguments".to_string());
             }
+            let proc = match &args[0] {
+                Value::Procedure(p) => p.clone(),
+                _ => return Err("map: first argument must be a procedure".to_string()),
+            };
+            let list_elements = list_to_vec(&args[1])?;
+            let env = crate::env::std_env();
 
-            Ok(ExprKind::Quote(Arc::new(Quote {
-                expr: ExprKind::List(Arc::new(PairList::from_vec(mapping_results))),
-            })))
+            let mut results = Vec::new();
+            for elem in list_elements {
+                let result = apply_proc_to_arg(&proc, elem, &env, sd)?;
+                results.push(result);
+            }
+            Ok(vec_to_list(results))
         }),
     );
 
     env.insert(
         "filter".to_string(),
-        Box::new(|exp, sd| {
-            let env = std_env();
-
-            let lambda_func = match &exp[0] {
-                ExprKind::Lambda(lambda_exp) => lambda_exp.clone(),
-                _ => return Err("First argument to map must be a lambda".to_string()),
+        Box::new(|args, sd| {
+            if args.len() != 2 {
+                return Err("filter requires 2 arguments".to_string());
+            }
+            let proc = match &args[0] {
+                Value::Procedure(p) => p.clone(),
+                _ => return Err("filter: first argument must be a procedure".to_string()),
             };
+            let list_elements = list_to_vec(&args[1])?;
+            let env = crate::env::std_env();
 
-            // Extract list from quoted/unquoted list or valid pair
-            let args = match &exp[1] {
-                ExprKind::List(l) => Arc::try_unwrap(l.clone()).unwrap_or_else(|arc| (*arc).clone()),
-                ExprKind::Pair(p) => {
-                    if p.is_list() {
-                        // Convert valid pair list to PairList
-                        PairList { head: Some(p.clone()) }
-                    } else {
-                        return Err("Second argument to filter must be a proper list".to_string());
-                    }
-                },
-                ExprKind::Quote(args) => match args.expr.clone() {
-                    ExprKind::List(l) => Arc::try_unwrap(l).unwrap_or_else(|arc| (*arc).clone()),
-                    ExprKind::Pair(p) => {
-                        if p.is_list() {
-                            PairList { head: Some(p) }
-                        } else {
-                            return Err("Second argument to filter must be a proper list".to_string());
-                        }
-                    },
-                    _ => {
-                        return Err("Second argument to filter must be a list".to_string());
-                    }
-                },
-                _ => {
-                    return Err("Second argument to filter must be a list".to_string())
-                }
-            };
-
-            let mut mapping_results: Vec<ExprKind> = Vec::new();
-
-            for arg in args.to_vec().iter() {
-                let proc = ExprKind::to_proc(
-                    &ExprKind::Lambda(lambda_func.clone()),
-                    vec![arg.to_owned()],
-                    &env,
-                )
-                .unwrap();
-                let result = proc.proc_eval(sd).unwrap();
-                match result {
-                    ExprKind::Atom(ref atom) => {
-                        if let Atom::Bool(test) = atom.as_ref() {
-                            if let RLispBoolean::True(_) = test {
-                                mapping_results.push(arg.clone());
-                            }
-                        }
-                    }
-
-                    _ => {
-                        return Err("Invalid return from filter predicate".to_string());
-                    }
+            let mut results = Vec::new();
+            for elem in list_elements {
+                let test_result = apply_proc_to_arg(&proc, elem.clone(), &env, sd)?;
+                if test_result.is_truthy() {
+                    results.push(elem);
                 }
             }
-
-            Ok(ExprKind::Quote(Arc::new(Quote {
-                expr: ExprKind::List(Arc::new(PairList::from_vec(mapping_results))),
-            })))
+            Ok(vec_to_list(results))
         }),
     );
 
     env
+}
+
+// Helper: check if a Value is a proper list
+fn is_list(val: &Value) -> bool {
+    match val {
+        Value::Nil => true,
+        Value::Pair(p) => is_list(&p.1),
+        _ => false,
+    }
+}
+
+// Helper: convert Value list to Vec
+fn list_to_vec(val: &Value) -> Result<Vec<Value>, String> {
+    let mut result = Vec::new();
+    let mut current = val.clone();
+    loop {
+        match current {
+            Value::Nil => break,
+            Value::Pair(p) => {
+                result.push(p.0.clone());
+                current = p.1.clone();
+            }
+            _ => return Err("not a proper list".to_string()),
+        }
+    }
+    Ok(result)
+}
+
+// Helper: convert Vec to Value list
+fn vec_to_list(vals: Vec<Value>) -> Value {
+    vals.into_iter()
+        .rev()
+        .fold(Value::Nil, |acc, val| Value::Pair(Arc::new((val, acc))))
+}
+
+// Helper: get list length
+fn list_length(val: &Value) -> Result<i64, String> {
+    let mut count = 0i64;
+    let mut current = val.clone();
+    loop {
+        match current {
+            Value::Nil => break,
+            Value::Pair(p) => {
+                count += 1;
+                current = p.1.clone();
+            }
+            _ => return Err("not a proper list".to_string()),
+        }
+    }
+    Ok(count)
 }

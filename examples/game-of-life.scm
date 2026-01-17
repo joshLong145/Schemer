@@ -93,7 +93,7 @@
       (else
         (begin
           (display generation)
-
+          (newline)
           (game (next-generation generation)))))))
 
 (game '((5 10) (6 10) (6 9) (5 11) (7 10) (6 11) (6 12) (4 10)))

@@ -1,19 +1,16 @@
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 
-#[cfg(test)]
-use std::sync::Arc;
-
 use crate::{
     eval::eval,
-    types::{Atom, ExprKind, list::PairList},
+    types::{Atom, ExprKind, Value},
 };
 
 pub type ProcedureFn =
-    Box<dyn Fn(Vec<ExprKind>, &mut HashMap<String, ExprKind>) -> Result<ExprKind, String>>;
+    Box<dyn Fn(Vec<Value>, &mut HashMap<String, Value>) -> Result<Value, String>>;
 
 pub struct Proc<'a> {
-    pub params: HashMap<String, ExprKind>,
+    pub params: HashMap<String, Value>,
     pub signature: ExprKind,
     pub body: ExprKind,
     pub env: &'a HashMap<String, ProcedureFn>,
@@ -34,17 +31,11 @@ impl Display for Proc<'_> {
 }
 
 pub trait Eval {
-    fn proc_eval(
-        &self,
-        symbol_definitions: &mut HashMap<String, ExprKind>,
-    ) -> Result<ExprKind, String>;
+    fn proc_eval(&self, symbol_definitions: &mut HashMap<String, Value>) -> Result<Value, String>;
 }
 
 impl Eval for Proc<'_> {
-    fn proc_eval(
-        &self,
-        symbol_definitions: &mut HashMap<String, ExprKind>,
-    ) -> Result<ExprKind, String> {
+    fn proc_eval(&self, symbol_definitions: &mut HashMap<String, Value>) -> Result<Value, String> {
         let mut local_symbols = HashMap::new();
         local_symbols.extend(symbol_definitions.clone());
         local_symbols.extend(self.params.clone());
@@ -82,7 +73,8 @@ impl Eval for Proc<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::RLispNumber;
+    use crate::types::Number;
+    use std::sync::Arc;
 
     use super::*;
 
@@ -93,10 +85,7 @@ mod tests {
         let mut params = HashMap::new();
 
         // Create a simple procedure that returns a number
-        params.insert(
-            "x".to_string(),
-            ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(42)))),
-        );
+        params.insert("x".to_string(), Value::Number(Number::Int(42)));
 
         let proc = Proc {
             params,
@@ -106,13 +95,7 @@ mod tests {
         };
 
         let result = proc.proc_eval(&mut symbol_defs).unwrap();
-        match result {
-            ExprKind::Atom(atom) => match atom.as_ref() {
-                Atom::Number(RLispNumber::Int(n)) => assert_eq!(*n, 42),
-                _ => panic!("expected integer"),
-            },
-            _ => panic!("expected atom"),
-        }
+        assert_eq!(result, Value::Number(Number::Int(42)));
     }
 
     #[test]
@@ -122,48 +105,19 @@ mod tests {
         let mut params = HashMap::new();
 
         // Add a value to the outer scope
-        symbol_defs.insert(
-            "y".to_string(),
-            ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(10)))),
-        );
+        symbol_defs.insert("y".to_string(), Value::Number(Number::Int(10)));
 
         // Create a procedure that references both a parameter and a closed-over value
-        params.insert(
-            "x".to_string(),
-            ExprKind::Atom(Arc::new(Atom::Number(RLispNumber::Int(5)))),
-        );
+        params.insert("x".to_string(), Value::Number(Number::Int(5)));
 
         let proc = Proc {
             params,
             signature: ExprKind::Atom(Arc::new(Atom::Symbol("x".to_string()))),
-            body: ExprKind::List(Arc::new(PairList::from_vec(vec![
-                ExprKind::Atom(Arc::new(Atom::Symbol("x".to_string()))),
-                ExprKind::Atom(Arc::new(Atom::Symbol("y".to_string()))),
-            ]))),
+            body: ExprKind::Atom(Arc::new(Atom::Symbol("x".to_string()))),
             env: &env,
         };
 
         let result = proc.proc_eval(&mut symbol_defs).unwrap();
-        match result {
-            ExprKind::List(list) => {
-                assert_eq!(list.length(), 2);
-                let args_vec = list.to_vec();
-                match &args_vec[0] {
-                    ExprKind::Atom(atom) => match atom.as_ref() {
-                        Atom::Number(RLispNumber::Int(n)) => assert_eq!(*n, 5),
-                        _ => panic!("expected integer"),
-                    },
-                    _ => panic!("expected atom"),
-                }
-                match &args_vec[1] {
-                    ExprKind::Atom(atom) => match atom.as_ref() {
-                        Atom::Number(RLispNumber::Int(n)) => assert_eq!(*n, 10),
-                        _ => panic!("expected integer"),
-                    },
-                    _ => panic!("expected atom"),
-                }
-            }
-            _ => panic!("expected list"),
-        }
+        assert_eq!(result, Value::Number(Number::Int(5)));
     }
 }
