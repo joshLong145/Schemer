@@ -1,4 +1,4 @@
-use crate::types::{ExprKind, list::PairList};
+use crate::types::ExprKind;
 use std::sync::Arc;
 
 pub trait Node {}
@@ -100,7 +100,7 @@ impl Pair<ExprKind> {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::{Atom, ExprKind, RLispNumber};
+    use crate::types::{list::PairList, Atom, ExprKind, RLispNumber};
     use std::sync::Arc;
 
     #[test]
@@ -236,7 +236,7 @@ mod tests {
                     car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
                         RLispNumber::Int(3),
                     ))))),
-                    cdr: Some(Arc::new(ExprKind::List(Arc::new(super::PairList::nil())))),
+                    cdr: Some(Arc::new(ExprKind::List(Arc::new(PairList::nil())))),
                 })))),
             })))),
         };
@@ -264,7 +264,7 @@ mod tests {
             car: Some(Arc::new(ExprKind::Atom(Arc::new(Atom::Number(
                 RLispNumber::Int(1),
             ))))),
-            cdr: Some(Arc::new(ExprKind::List(Arc::new(super::PairList::nil())))),
+            cdr: Some(Arc::new(ExprKind::List(Arc::new(PairList::nil())))),
         };
         assert!(!pair.is_list());
     }

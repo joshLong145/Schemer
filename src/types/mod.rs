@@ -1,5 +1,8 @@
 pub mod pair;
 pub mod list;
+pub mod value;
+
+pub use value::{Number, Procedure, Value};
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -382,7 +385,7 @@ impl From<String> for Atom {
 impl ExprKind {
     pub fn to_proc<'a>(
         &self,
-        params: Vec<ExprKind>,
+        params: Vec<Value>,
         env: &'a HashMap<String, ProcedureFn>,
     ) -> Result<Proc<'a>, String> {
         match self {

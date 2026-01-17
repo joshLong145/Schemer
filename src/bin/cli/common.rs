@@ -1,9 +1,8 @@
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
-use schemer::env::std_env;
+use schemer::env::{std_const_exp, std_env};
 use schemer::eval::eval;
 use schemer::parser::{parse, read_from_tokens};
-use schemer::types::ExprKind;
 
 use std::collections::{HashMap, VecDeque};
 use std::thread;
@@ -11,7 +10,7 @@ use std::thread;
 pub fn repl() -> rustyline::Result<()> {
     let env = std_env();
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
-    let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+    let mut symbol_definitions = std_const_exp();
 
     let mut rl = DefaultEditor::new()?;
 
@@ -46,7 +45,7 @@ pub fn parse_and_run_scheme(buffer: String) {
     let handler  = builder.spawn(||{
         let env = std_env();
         let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
-        let mut symbol_definitions: HashMap<String, ExprKind> = HashMap::new();
+        let mut symbol_definitions = std_const_exp();
         let mut token_map = parse(buffer, &mut exp_map);
 
         while token_map.len() > 0 {
