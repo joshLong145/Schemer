@@ -26,10 +26,7 @@ impl PairList {
     pub fn cons(car: ExprKind, cdr: PairList) -> Self {
         let pair = Pair {
             car: Some(Arc::new(car)),
-            cdr: match cdr.head {
-                Some(pair) => Some(Arc::new(ExprKind::Pair(pair))),
-                None => None,
-            },
+            cdr: cdr.head.map(|pair| Arc::new(ExprKind::Pair(pair))),
         };
 
         PairList {
@@ -102,14 +99,12 @@ impl PairList {
             return Ok(other.clone());
         }
 
-        let car = self.car()
+        let car = self
+            .car()
             .ok_or_else(|| "Invalid list structure: non-empty list has no car".to_string())?;
         let cdr = self.cdr().unwrap_or_else(PairList::nil);
 
-        Ok(PairList::cons(
-            (*car).clone(),
-            cdr.append(other)?
-        ))
+        Ok(PairList::cons((*car).clone(), cdr.append(other)?))
     }
 
     /// Reverse the list

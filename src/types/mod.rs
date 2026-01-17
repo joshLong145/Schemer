@@ -1,5 +1,5 @@
-pub mod pair;
 pub mod list;
+pub mod pair;
 pub mod value;
 
 pub use value::{Number, Procedure, Value};
@@ -14,7 +14,7 @@ use log::debug;
 
 use crate::{
     proc::{Proc, ProcedureFn},
-    types::{pair::Pair, list::PairList}
+    types::{list::PairList, pair::Pair},
 };
 
 pub type RLispSymbol = String;
@@ -71,8 +71,6 @@ pub struct Cond {
     pub else_expr: ExprKind,
 }
 
-
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct If {
     pub test_expr: ExprKind,
@@ -112,8 +110,8 @@ pub struct Quote {
 impl Clone for RLispBoolean {
     fn clone(&self) -> Self {
         match self {
-            Self::True(arg0) => Self::True(arg0.clone()),
-            Self::False(arg0) => Self::False(arg0.clone()),
+            Self::True(arg0) => Self::True(*arg0),
+            Self::False(arg0) => Self::False(*arg0),
         }
     }
 }
@@ -121,8 +119,8 @@ impl Clone for RLispBoolean {
 impl Clone for RLispNumber {
     fn clone(&self) -> Self {
         match self {
-            Self::Int(arg0) => Self::Int(arg0.clone()),
-            Self::Float(arg0) => Self::Float(arg0.clone()),
+            Self::Int(arg0) => Self::Int(*arg0),
+            Self::Float(arg0) => Self::Float(*arg0),
         }
     }
 }
@@ -141,10 +139,10 @@ impl TryFrom<SymbolicExpression> for AtomToken {
     type Error = &'static str;
 
     fn try_from(value: SymbolicExpression) -> Result<Self, Self::Error> {
-        return match value {
+        match value {
             SymbolicExpression::Atom(exp) => Ok(exp),
             _ => Err("Invalid cast"),
-        };
+        }
     }
 }
 
@@ -152,11 +150,11 @@ impl TryFrom<SymbolicExpression> for RLispSubSymbolicExpressions {
     type Error = &'static str;
 
     fn try_from(value: SymbolicExpression) -> Result<Self, Self::Error> {
-        return match value {
+        match value {
             SymbolicExpression::List(l) => Ok(l),
             SymbolicExpression::Lambda(la) => Ok(la),
             _ => Err("Invalid casta"),
-        };
+        }
     }
 }
 
@@ -241,7 +239,7 @@ impl Display for ExprKind {
             ExprKind::Cond(cond_exp) => {
                 write!(f, "{}", cond_exp.test_exps)?;
                 write!(f, "{}", cond_exp.else_expr)
-            },
+            }
             ExprKind::If(if_expr) => {
                 write!(
                     f,
@@ -253,7 +251,7 @@ impl Display for ExprKind {
                 write!(f, "(define {} \n{})", define_expr.name, define_expr.body)
             }
             ExprKind::Begin(begin_expr) => {
-                write!(f, "(begin\n")?;
+                writeln!(f, "(begin")?;
                 for expr in begin_expr.exprs.iter() {
                     write!(f, "\n{}\n", expr)?;
                 }
@@ -422,12 +420,12 @@ impl ExprKind {
                     _ => return Err("invalid lambda parameter specification".to_string()),
                 }
 
-                return Ok(Proc {
+                Ok(Proc {
                     params: param_map.clone(),
                     signature: lambda.args.clone(),
                     body: lambda.body.clone(),
-                    env: env,
-                });
+                    env,
+                })
             }
             _ => Err("can only create procedures from lambda expressions".to_string()),
         }
@@ -445,7 +443,7 @@ impl From<SymbolicExpression> for ExprKind {
             SymbolicExpression::StringLiteral(str) => ExprKind::StringLiteral(Arc::new(str)),
             SymbolicExpression::Character(c) => ExprKind::StringLiteral(Arc::new(c.to_string())),
             SymbolicExpression::List(symbolic_expressions) => {
-                if symbolic_expressions.len() < 1 {
+                if symbolic_expressions.is_empty() {
                     return ExprKind::List(Arc::new(PairList::nil()));
                 }
                 let first = &symbolic_expressions[0];
@@ -460,7 +458,7 @@ impl From<SymbolicExpression> for ExprKind {
                         } else if name == "begin" {
                             ExprKind::Begin(Arc::new(Begin {
                                 exprs: symbolic_expressions[1..symbolic_expressions.len()]
-                                    .into_iter()
+                                    .iter()
                                     .map(|exp| ExprKind::from(exp.clone()))
                                     .collect(),
                             }))
@@ -489,13 +487,20 @@ impl From<SymbolicExpression> for ExprKind {
                                 proc_call: symbolic_expressions[2].clone().into(),
                             }))
                         } else if name == "cond" {
-                            let test_exps: Vec<ExprKind> = symbolic_expressions[1..symbolic_expressions.len() - 1].to_vec().iter().map(|s| {
-                                s.to_owned().into()
-                            }).collect();
-                            let else_expr: ExprKind = if let SymbolicExpression::List(l) = symbolic_expressions[symbolic_expressions.len() - 1].clone() {
+                            let test_exps: Vec<ExprKind> = symbolic_expressions
+                                [1..symbolic_expressions.len() - 1]
+                                .to_vec()
+                                .iter()
+                                .map(|s| s.to_owned().into())
+                                .collect();
+                            let else_expr: ExprKind = if let SymbolicExpression::List(l) =
+                                symbolic_expressions[symbolic_expressions.len() - 1].clone()
+                            {
                                 l[1].clone().into()
                             } else {
-                                symbolic_expressions[symbolic_expressions.len() - 1].clone().into()
+                                symbolic_expressions[symbolic_expressions.len() - 1]
+                                    .clone()
+                                    .into()
                             };
 
                             ExprKind::Cond(Arc::new(Cond {
@@ -507,7 +512,7 @@ impl From<SymbolicExpression> for ExprKind {
                                 symbolic_expressions
                                     .into_iter()
                                     .map(ExprKind::from)
-                                    .collect()
+                                    .collect(),
                             )))
                         }
                     }
@@ -515,7 +520,7 @@ impl From<SymbolicExpression> for ExprKind {
                         symbolic_expressions
                             .into_iter()
                             .map(ExprKind::from)
-                            .collect()
+                            .collect(),
                     ))),
                 }
             }
@@ -525,7 +530,7 @@ impl From<SymbolicExpression> for ExprKind {
                         symbolic_expressions
                             .into_iter()
                             .map(ExprKind::from)
-                            .collect()
+                            .collect(),
                     ))),
                 }))
             }

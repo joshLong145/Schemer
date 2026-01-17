@@ -14,9 +14,9 @@ fn setup_logging() {
 
 // Helper to create a proper list from a Vec of Values
 fn list(vals: Vec<Value>) -> Value {
-    vals.into_iter().rev().fold(Value::Nil, |acc, val| {
-        Value::Pair(Arc::new((val, acc)))
-    })
+    vals.into_iter()
+        .rev()
+        .fold(Value::Nil, |acc, val| Value::Pair(Arc::new((val, acc))))
 }
 
 #[test]
@@ -70,8 +70,7 @@ fn parse_and_eval_list_append_from_proc() {
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
     let mut token_map = parse(
-        "(begin (define foo (lambda () (append '(1 2) '(1)))) (foo))"
-            .to_string(),
+        "(begin (define foo (lambda () (append '(1 2) '(1)))) (foo))".to_string(),
         &mut exp_map,
     );
     let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
@@ -143,7 +142,10 @@ fn parse_and_eval_list_append_multiple() {
     setup_logging();
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
-    let mut token_map = parse("(begin (append '(1 2) '(1) '(1)))".to_string(), &mut exp_map);
+    let mut token_map = parse(
+        "(begin (append '(1 2) '(1) '(1)))".to_string(),
+        &mut exp_map,
+    );
     let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
 
     let env = std_env();
@@ -316,8 +318,7 @@ fn parse_and_eval_filter_with_function() {
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
     let mut token_map = parse(
-        "(begin (define b (filter (lambda (x) (if (< 2 x) #t #f)) '(1 10 3))) b)"
-            .to_string(),
+        "(begin (define b (filter (lambda (x) (if (< 2 x) #t #f)) '(1 10 3))) b)".to_string(),
         &mut exp_map,
     );
     let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
@@ -498,7 +499,7 @@ fn test_r7rs_truthiness_only_false_is_falsy() {
     setup_logging();
 
     let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
-    
+
     // 0 is truthy in R7RS
     let mut token_map = parse("(if 0 1 2)".to_string(), &mut exp_map);
     let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
@@ -506,14 +507,14 @@ fn test_r7rs_truthiness_only_false_is_falsy() {
     let mut symbol_definitions = std_const_exp();
     let res = eval(exp, &env, &mut symbol_definitions).unwrap();
     assert_eq!(res, Value::Number(Number::Int(1)));
-    
-    // empty list is truthy in R7RS  
+
+    // empty list is truthy in R7RS
     exp_map.clear();
     let mut token_map = parse("(if '() 1 2)".to_string(), &mut exp_map);
     let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
     let res = eval(exp, &env, &mut symbol_definitions).unwrap();
     assert_eq!(res, Value::Number(Number::Int(1)));
-    
+
     // only #f is falsy
     exp_map.clear();
     let mut token_map = parse("(if #f 1 2)".to_string(), &mut exp_map);
@@ -532,23 +533,35 @@ fn test_type_predicates() {
     // number?
     let mut token_map = parse("(number? 42)".to_string(), &mut exp_map);
     let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
-    assert_eq!(eval(exp, &env, &mut symbol_definitions).unwrap(), Value::Boolean(true));
+    assert_eq!(
+        eval(exp, &env, &mut symbol_definitions).unwrap(),
+        Value::Boolean(true)
+    );
 
     // boolean?
     exp_map.clear();
     let mut token_map = parse("(boolean? #t)".to_string(), &mut exp_map);
     let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
-    assert_eq!(eval(exp, &env, &mut symbol_definitions).unwrap(), Value::Boolean(true));
+    assert_eq!(
+        eval(exp, &env, &mut symbol_definitions).unwrap(),
+        Value::Boolean(true)
+    );
 
     // null?
     exp_map.clear();
     let mut token_map = parse("(null? '())".to_string(), &mut exp_map);
     let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
-    assert_eq!(eval(exp, &env, &mut symbol_definitions).unwrap(), Value::Boolean(true));
+    assert_eq!(
+        eval(exp, &env, &mut symbol_definitions).unwrap(),
+        Value::Boolean(true)
+    );
 
     // pair?
     exp_map.clear();
     let mut token_map = parse("(pair? (cons 1 2))".to_string(), &mut exp_map);
     let exp: ExprKind = read_from_tokens(&mut token_map).unwrap().into();
-    assert_eq!(eval(exp, &env, &mut symbol_definitions).unwrap(), Value::Boolean(true));
+    assert_eq!(
+        eval(exp, &env, &mut symbol_definitions).unwrap(),
+        Value::Boolean(true)
+    );
 }

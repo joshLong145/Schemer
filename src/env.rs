@@ -10,7 +10,10 @@ pub type ProcedureFn =
 
 pub fn std_const_exp() -> HashMap<String, Value> {
     let mut const_exps = HashMap::new();
-    const_exps.insert("pi".to_string(), Value::Number(Number::Float(3.141592653589793)));
+    const_exps.insert(
+        "pi".to_string(),
+        Value::Number(Number::Float(std::f64::consts::PI)),
+    );
     const_exps
 }
 
@@ -303,7 +306,10 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             if args.is_empty() {
                 return Err("exact? requires one argument".to_string());
             }
-            Ok(Value::Boolean(matches!(args[0], Value::Number(Number::Int(_)))))
+            Ok(Value::Boolean(matches!(
+                args[0],
+                Value::Number(Number::Int(_))
+            )))
         }),
     );
 
@@ -313,7 +319,10 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             if args.is_empty() {
                 return Err("inexact? requires one argument".to_string());
             }
-            Ok(Value::Boolean(matches!(args[0], Value::Number(Number::Float(_)))))
+            Ok(Value::Boolean(matches!(
+                args[0],
+                Value::Number(Number::Float(_))
+            )))
         }),
     );
 
@@ -330,7 +339,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             };
             let list_elements = list_to_vec(&args[1])?;
             let env = crate::env::std_env();
-            
+
             let mut results = Vec::new();
             for elem in list_elements {
                 let result = apply_proc_to_arg(&proc, elem, &env, sd)?;
@@ -352,7 +361,7 @@ pub fn std_env() -> HashMap<String, ProcedureFn> {
             };
             let list_elements = list_to_vec(&args[1])?;
             let env = crate::env::std_env();
-            
+
             let mut results = Vec::new();
             for elem in list_elements {
                 let test_result = apply_proc_to_arg(&proc, elem.clone(), &env, sd)?;
@@ -395,9 +404,9 @@ fn list_to_vec(val: &Value) -> Result<Vec<Value>, String> {
 
 // Helper: convert Vec to Value list
 fn vec_to_list(vals: Vec<Value>) -> Value {
-    vals.into_iter().rev().fold(Value::Nil, |acc, val| {
-        Value::Pair(Arc::new((val, acc)))
-    })
+    vals.into_iter()
+        .rev()
+        .fold(Value::Nil, |acc, val| Value::Pair(Arc::new((val, acc))))
 }
 
 // Helper: get list length

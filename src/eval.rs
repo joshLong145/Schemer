@@ -4,8 +4,8 @@ use tailcall::tailcall;
 use crate::{
     proc::ProcedureFn,
     types::{
-        list::PairList, pair::Pair, Atom, Begin, Cond, Define, ExprKind, If, Lambda, Let,
-        Number, Procedure, RLispBoolean, RLispNumber, Value,
+        list::PairList, pair::Pair, Atom, Begin, Cond, Define, ExprKind, If, Lambda, Let, Number,
+        Procedure, RLispBoolean, RLispNumber, Value,
     },
 };
 use std::{collections::HashMap, sync::Arc};
@@ -103,8 +103,16 @@ fn expr_to_value(expr: &ExprKind) -> Value {
         }
         ExprKind::StringLiteral(s) => Value::String(s.clone()),
         ExprKind::Pair(p) => {
-            let car = p.car.as_ref().map(|c| expr_to_value(c)).unwrap_or(Value::Nil);
-            let cdr = p.cdr.as_ref().map(|c| expr_to_value(c)).unwrap_or(Value::Nil);
+            let car = p
+                .car
+                .as_ref()
+                .map(|c| expr_to_value(c))
+                .unwrap_or(Value::Nil);
+            let cdr = p
+                .cdr
+                .as_ref()
+                .map(|c| expr_to_value(c))
+                .unwrap_or(Value::Nil);
             Value::Pair(Arc::new((car, cdr)))
         }
         ExprKind::Quote(q) => expr_to_value(&q.expr),
@@ -114,12 +122,10 @@ fn expr_to_value(expr: &ExprKind) -> Value {
 
 // Convert Vec to proper list
 fn vec_to_list(vals: Vec<Value>) -> Value {
-    vals.into_iter().rev().fold(Value::Nil, |acc, val| {
-        Value::Pair(Arc::new((val, acc)))
-    })
+    vals.into_iter()
+        .rev()
+        .fold(Value::Nil, |acc, val| Value::Pair(Arc::new((val, acc))))
 }
-
-
 
 #[tailcall]
 fn eval_define(
@@ -147,27 +153,28 @@ fn eval_cond(
     env: &HashMap<String, ProcedureFn>,
     symbol_definitions: &mut HashMap<String, Value>,
 ) -> Result<Value, String> {
-    match cond_expr.test_exps {
-        ExprKind::List(tests) => {
-            let tests_vec = tests.to_vec();
-            for test in tests_vec.iter() {
-                if let ExprKind::List(l) = test {
-                    if l.length() < 2 {
-                        return Err("invalid test expression".to_string());
-                    }
-                    let test_exp = l.nth(0).ok_or("missing test expression")?.as_ref().clone();
-                    let test_res = eval(test_exp, env, symbol_definitions)?;
-                    
-                    if test_res.is_truthy() {
-                        let result_expr = l.nth(1).ok_or("missing result expression")?.as_ref().clone();
-                        return eval(result_expr, env, symbol_definitions);
-                    }
-                } else {
+    if let ExprKind::List(tests) = cond_expr.test_exps {
+        let tests_vec = tests.to_vec();
+        for test in tests_vec.iter() {
+            if let ExprKind::List(l) = test {
+                if l.length() < 2 {
                     return Err("invalid test expression".to_string());
                 }
+                let test_exp = l.nth(0).ok_or("missing test expression")?.as_ref().clone();
+                let test_res = eval(test_exp, env, symbol_definitions)?;
+
+                if test_res.is_truthy() {
+                    let result_expr = l
+                        .nth(1)
+                        .ok_or("missing result expression")?
+                        .as_ref()
+                        .clone();
+                    return eval(result_expr, env, symbol_definitions);
+                }
+            } else {
+                return Err("invalid test expression".to_string());
             }
         }
-        _ => {}
     }
 
     eval(cond_expr.else_expr, env, symbol_definitions)
@@ -213,10 +220,10 @@ fn eval_lambda(
     symbol_definitions: &HashMap<String, Value>,
 ) -> Result<Value, String> {
     debug!("returning lambda {:?}", lambda);
-    
+
     // Extract parameter names
     let params = extract_param_names(&lambda.args)?;
-    
+
     Ok(Value::Procedure(Arc::new(Procedure {
         params,
         body: lambda.body.clone(),
@@ -245,7 +252,7 @@ fn extract_param_names(args: &ExprKind) -> Result<Vec<String>, String> {
             if let Atom::Symbol(s) = atom.as_ref() {
                 Ok(vec![s.clone()])
             } else {
-                return Err("lambda parameter must be a symbol".to_string());
+                Err("lambda parameter must be a symbol".to_string())
             }
         }
         _ => Err("invalid lambda parameter specification".to_string()),
@@ -284,19 +291,17 @@ fn eval_list(
                 debug!("result of proc {:?}", proc_res);
                 return proc_res;
             }
-            
+
             // Check user-defined procedures
-            if let Some(def) = symbol_definitions.get(name).cloned() {
-                if let Value::Procedure(proc) = def {
-                    debug!("found procedure {}", name);
-                    let mut evaluated_args = Vec::new();
-                    for arg in args_vec[1..].iter() {
-                        let evaluated = eval(arg.clone(), env, symbol_definitions)?;
-                        evaluated_args.push(evaluated);
-                    }
-                    
-                    return apply_procedure(&proc, evaluated_args, env, symbol_definitions);
+            if let Some(Value::Procedure(proc)) = symbol_definitions.get(name).cloned() {
+                debug!("found procedure {}", name);
+                let mut evaluated_args = Vec::new();
+                for arg in args_vec[1..].iter() {
+                    let evaluated = eval(arg.clone(), env, symbol_definitions)?;
+                    evaluated_args.push(evaluated);
                 }
+
+                return apply_procedure(&proc, evaluated_args, env, symbol_definitions);
             }
         }
     }
@@ -375,14 +380,18 @@ fn eval_pair(
     env: &HashMap<String, ProcedureFn>,
     symbol_definitions: &mut HashMap<String, Value>,
 ) -> Result<Value, String> {
-    let car = pair.car.as_ref()
+    let car = pair
+        .car
+        .as_ref()
         .map(|c| eval(c.as_ref().clone(), env, symbol_definitions))
         .transpose()?
         .unwrap_or(Value::Nil);
-    let cdr = pair.cdr.as_ref()
+    let cdr = pair
+        .cdr
+        .as_ref()
         .map(|c| eval(c.as_ref().clone(), env, symbol_definitions))
         .transpose()?
         .unwrap_or(Value::Nil);
-    
+
     Ok(Value::Pair(Arc::new((car, cdr))))
 }

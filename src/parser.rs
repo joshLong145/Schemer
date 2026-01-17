@@ -20,7 +20,7 @@ pub fn parse<'a>(
     let converted_program: VecDeque<String> = formatted_program
         .iter()
         .map(|t| t.to_string())
-        .filter(|t| t != "")
+        .filter(|t| !t.is_empty())
         .collect();
 
     token_store.insert(program.clone(), converted_program);
@@ -38,20 +38,17 @@ pub fn read_from_tokens(tokens: &mut Tokens) -> Result<SymbolicExpression, Parse
         }
         let _ = tokens.pop_front().unwrap();
         let l = SymbolicExpression::List(v.clone());
-        if v.len() < 1 {
+        if v.is_empty() {
             return Ok(l);
         }
 
         if let Some(exp) = l.try_peek() {
-            match exp {
-                SymbolicExpression::Atom(a) => {
-                    if a == "lambda" {
-                        return Ok(SymbolicExpression::Lambda(v));
-                    }
-
-                    return Ok(l);
+            if let SymbolicExpression::Atom(a) = exp {
+                if a == "lambda" {
+                    return Ok(SymbolicExpression::Lambda(v));
                 }
-                _ => {}
+
+                return Ok(l);
             }
 
             return Ok(l);

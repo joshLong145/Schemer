@@ -40,21 +40,25 @@ pub fn repl() -> rustyline::Result<()> {
 }
 
 pub fn parse_and_run_scheme(buffer: String) {
-    let builder = thread::Builder::new().name("evaluator".into()).stack_size(1024 * 1024 * 1024);
+    let builder = thread::Builder::new()
+        .name("evaluator".into())
+        .stack_size(1024 * 1024 * 1024);
 
-    let handler  = builder.spawn(||{
-        let env = std_env();
-        let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
-        let mut symbol_definitions = std_const_exp();
-        let mut token_map = parse(buffer, &mut exp_map);
+    let handler = builder
+        .spawn(|| {
+            let env = std_env();
+            let mut exp_map: HashMap<String, VecDeque<String>> = HashMap::new();
+            let mut symbol_definitions = std_const_exp();
+            let mut token_map = parse(buffer, &mut exp_map);
 
-        while token_map.len() > 0 {
-            let sym_exp = read_from_tokens(&mut token_map).unwrap();
-            let exp = sym_exp.clone().into();
-            let res = eval(exp, &env, &mut symbol_definitions).unwrap();
-            println!("{}", res);
-        }
-    }).unwrap();
+            while !token_map.is_empty() {
+                let sym_exp = read_from_tokens(&mut token_map).unwrap();
+                let exp = sym_exp.clone().into();
+                let res = eval(exp, &env, &mut symbol_definitions).unwrap();
+                println!("{}", res);
+            }
+        })
+        .unwrap();
 
     handler.join().unwrap();
 }

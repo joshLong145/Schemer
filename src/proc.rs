@@ -31,17 +31,11 @@ impl Display for Proc<'_> {
 }
 
 pub trait Eval {
-    fn proc_eval(
-        &self,
-        symbol_definitions: &mut HashMap<String, Value>,
-    ) -> Result<Value, String>;
+    fn proc_eval(&self, symbol_definitions: &mut HashMap<String, Value>) -> Result<Value, String>;
 }
 
 impl Eval for Proc<'_> {
-    fn proc_eval(
-        &self,
-        symbol_definitions: &mut HashMap<String, Value>,
-    ) -> Result<Value, String> {
+    fn proc_eval(&self, symbol_definitions: &mut HashMap<String, Value>) -> Result<Value, String> {
         let mut local_symbols = HashMap::new();
         local_symbols.extend(symbol_definitions.clone());
         local_symbols.extend(self.params.clone());
@@ -79,8 +73,8 @@ impl Eval for Proc<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use crate::types::Number;
+    use std::sync::Arc;
 
     use super::*;
 
