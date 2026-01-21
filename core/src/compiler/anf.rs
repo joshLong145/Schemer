@@ -459,7 +459,7 @@ impl AnfTransformer {
         //
         // We need to process right-to-left and build the ANF in proper order where
         // each variable is defined before it's used.
-        
+
         // Phase 1: Collect all element ANFs and assign variables
         // Process right-to-left to match cons order
         struct ElemInfo {
@@ -467,23 +467,27 @@ impl AnfTransformer {
             elem_var: VarId,
             cons_var: VarId,
         }
-        
+
         let mut infos: Vec<ElemInfo> = Vec::new();
         for elem in elements.iter().rev() {
             let elem_anf = self.quote_value(elem)?;
             let elem_var = self.fresh_temp();
             let cons_var = self.fresh_temp();
-            infos.push(ElemInfo { elem_anf, elem_var, cons_var });
+            infos.push(ElemInfo {
+                elem_anf,
+                elem_var,
+                cons_var,
+            });
         }
-        
+
         // Phase 2: Build the expression from inside out
         // The innermost element (rightmost, first in infos) conses with nil
         // Each subsequent element conses with the previous cons_var
-        
+
         // Start with the return of the final (leftmost) list head
         let final_cons_var = infos.last().unwrap().cons_var.clone();
         let mut result = AnfExpr::Return(Atom::Var(final_cons_var));
-        
+
         // Build from innermost (rightmost element) to outermost (leftmost element)
         // We iterate in reverse over infos (which gives us left-to-right in original list)
         for (i, info) in infos.iter().enumerate().rev() {
@@ -492,7 +496,7 @@ impl AnfTransformer {
             } else {
                 Atom::Var(infos[i - 1].cons_var.clone()) // Use previous cons result
             };
-            
+
             // Build: let cons_var = cons(elem_var, tail) in <result>
             result = AnfExpr::Let {
                 var: info.cons_var.clone(),
@@ -502,17 +506,23 @@ impl AnfTransformer {
                 },
                 body: Box::new(result),
             };
-            
+
             // Prepend the element computation
-            result = self.prepend_anf_returning_to(info.elem_anf.clone(), info.elem_var.clone(), result);
+            result =
+                self.prepend_anf_returning_to(info.elem_anf.clone(), info.elem_var.clone(), result);
         }
-        
+
         Ok(result)
     }
-    
+
     /// Helper: given an ANF expression that computes a value, make it store
     /// that value into `dest_var` and then continue with `continuation`
-    fn prepend_anf_returning_to(&self, anf: AnfExpr, dest_var: VarId, continuation: AnfExpr) -> AnfExpr {
+    fn prepend_anf_returning_to(
+        &self,
+        anf: AnfExpr,
+        dest_var: VarId,
+        continuation: AnfExpr,
+    ) -> AnfExpr {
         match anf {
             AnfExpr::Return(atom) => {
                 // Simple case: just bind the atom
@@ -533,12 +543,10 @@ impl AnfTransformer {
                     body: Box::new(self.prepend_anf_returning_to(*body, dest_var, continuation)),
                 }
             }
-            AnfExpr::Seq { effect, body } => {
-                AnfExpr::Seq {
-                    effect,
-                    body: Box::new(self.prepend_anf_returning_to(*body, dest_var, continuation)),
-                }
-            }
+            AnfExpr::Seq { effect, body } => AnfExpr::Seq {
+                effect,
+                body: Box::new(self.prepend_anf_returning_to(*body, dest_var, continuation)),
+            },
             // TailCall and Halt shouldn't appear in quote contexts
             _ => {
                 // Fallback - shouldn't happen for quote
@@ -993,12 +1001,16 @@ impl AnfTransformer {
                     return self.transform(&clause[1], tail_pos);
                 } else {
                     // Wrap multiple expressions in begin
-                    let begin_body: Vec<Value> = std::iter::once(Value::Symbol("begin".to_string()))
-                        .chain(clause[1..].iter().cloned())
-                        .collect();
-                    return self.transform(&Value::List(std::sync::Arc::new(
-                        crate::types::SchemeList::from_vec(begin_body),
-                    )), tail_pos);
+                    let begin_body: Vec<Value> =
+                        std::iter::once(Value::Symbol("begin".to_string()))
+                            .chain(clause[1..].iter().cloned())
+                            .collect();
+                    return self.transform(
+                        &Value::List(std::sync::Arc::new(crate::types::SchemeList::from_vec(
+                            begin_body,
+                        ))),
+                        tail_pos,
+                    );
                 }
             }
         }
@@ -1012,9 +1024,9 @@ impl AnfTransformer {
             let begin_body: Vec<Value> = std::iter::once(Value::Symbol("begin".to_string()))
                 .chain(clause[1..].iter().cloned())
                 .collect();
-            Value::List(std::sync::Arc::new(
-                crate::types::SchemeList::from_vec(begin_body),
-            ))
+            Value::List(std::sync::Arc::new(crate::types::SchemeList::from_vec(
+                begin_body,
+            )))
         } else {
             condition.clone() // Return condition value if no body
         };

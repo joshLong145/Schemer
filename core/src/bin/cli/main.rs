@@ -46,17 +46,14 @@ fn main() {
     if let Some(path) = m.get_one::<String>("path") {
         if compile_mode {
             // Compile mode
-            let output = m
-                .get_one::<String>("output")
-                .cloned()
-                .unwrap_or_else(|| {
-                    // Default: input.scm -> input (no extension)
-                    std::path::Path::new(path)
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("a.out")
-                        .to_string()
-                });
+            let output = m.get_one::<String>("output").cloned().unwrap_or_else(|| {
+                // Default: input.scm -> input (no extension)
+                std::path::Path::new(path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("a.out")
+                    .to_string()
+            });
 
             match schemer::compiler::compile_file(path, &output) {
                 Ok(()) => println!("Compiled {} -> {}", path, output),

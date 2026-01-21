@@ -513,7 +513,11 @@ impl CodeGenerator {
     }
 
     /// Generate QBE call arguments from a list of atoms
-    fn generate_args(&mut self, args: &[Atom], insts: &mut Vec<QbeInst>) -> Vec<(QbeType, QbeValue)> {
+    fn generate_args(
+        &mut self,
+        args: &[Atom],
+        insts: &mut Vec<QbeInst>,
+    ) -> Vec<(QbeType, QbeValue)> {
         let mut result = Vec::with_capacity(args.len());
         for a in args {
             result.push((QbeType::Long, self.generate_atom(a, insts)));

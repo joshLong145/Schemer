@@ -138,7 +138,8 @@ impl Linker {
     /// * `emit_asm` - If true, output assembly instead of executable
     pub fn link(&self, qbe_ir: &str, output: &Path, emit_asm: bool) -> Result<(), LinkError> {
         // Create temporary directory for intermediate files
-        let temp_dir_str = std::env::var("SCHEMER_TEMP_DIR").map_err(|e| LinkError::LinkerError(e.to_string()))?;
+        let temp_dir_str =
+            std::env::var("SCHEMER_TEMP_DIR").map_err(|e| LinkError::LinkerError(e.to_string()))?;
         let temp_dir = PathBuf::from(temp_dir_str).join("schemer_compile");
 
         std::fs::create_dir_all(&temp_dir)?;

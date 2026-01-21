@@ -151,7 +151,11 @@ impl ClosureConverter {
     }
 
     /// Collect free variables including transitive ones from MakeClosure
-    fn collect_transitive_free_vars(&self, expr: &AnfExpr, bound: &HashSet<VarId>) -> HashSet<VarId> {
+    fn collect_transitive_free_vars(
+        &self,
+        expr: &AnfExpr,
+        bound: &HashSet<VarId>,
+    ) -> HashSet<VarId> {
         match expr {
             AnfExpr::Return(atom) => self.free_vars_atom(atom, bound),
 
@@ -181,7 +185,11 @@ impl ClosureConverter {
         }
     }
 
-    fn collect_transitive_free_vars_complex(&self, expr: &ComplexExpr, bound: &HashSet<VarId>) -> HashSet<VarId> {
+    fn collect_transitive_free_vars_complex(
+        &self,
+        expr: &ComplexExpr,
+        bound: &HashSet<VarId>,
+    ) -> HashSet<VarId> {
         match expr {
             ComplexExpr::MakeClosure { label, captures } => {
                 let mut fv: HashSet<VarId> = captures
@@ -200,7 +208,11 @@ impl ClosureConverter {
                 fv
             }
             // If expressions can contain nested ANF expressions with MakeClosures
-            ComplexExpr::If { cond, then_expr, else_expr } => {
+            ComplexExpr::If {
+                cond,
+                then_expr,
+                else_expr,
+            } => {
                 let mut fv = self.free_vars_atom(cond, bound);
                 fv.extend(self.collect_transitive_free_vars(then_expr, bound));
                 fv.extend(self.collect_transitive_free_vars(else_expr, bound));
@@ -696,7 +708,6 @@ mod tests {
         );
     }
 
-
     // ========================================
     // Transitive Closure Capture Tests
     // ========================================
@@ -747,9 +758,10 @@ mod tests {
         );
 
         // Find the inner lambda (the one with parameter "x" that isn't my-fn)
-        let inner_lambda = converted.functions.iter().find(|f| {
-            f.params.contains(&var("x")) && !f.params.contains(&var("lst"))
-        });
+        let inner_lambda = converted
+            .functions
+            .iter()
+            .find(|f| f.params.contains(&var("x")) && !f.params.contains(&var("lst")));
 
         assert!(
             inner_lambda.is_some(),
