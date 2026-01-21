@@ -9,4 +9,5 @@
         if (< 2 x) #t #f))
     a))
     (display c)
+    (display (even? 11))
 )

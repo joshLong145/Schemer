@@ -1,0 +1,23 @@
+[package]
+name = "schemer_runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Native runtime library for Schemer compiler"
+license = "MIT"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+libc = "0.2"
+backtrace = "0.3"
+
+[features]
+default = []
+# Enable debug assertions in release builds
+debug-runtime = []
+
+[profile.release]
+# Optimize for size in the runtime
+opt-level = "s"
+lto = true

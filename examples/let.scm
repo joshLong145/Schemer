@@ -1,5 +1,5 @@
 (begin
-    (define foo (1 2 3))
+    (define foo (list 1 2 3))
     (define gen-list (lambda (x y) (let
             (
                 (a (car foo))
