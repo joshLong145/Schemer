@@ -11,8 +11,6 @@ use super::anf::*;
 
 /// Closure converter
 pub struct ClosureConverter {
-    /// Counter for lambda names
-    lambda_counter: u64,
     /// Generated lifted functions
     lifted_functions: Vec<FunctionDef>,
     /// Map from function label to free variables (for populating MakeClosure captures)
@@ -22,7 +20,6 @@ pub struct ClosureConverter {
 impl ClosureConverter {
     pub fn new() -> Self {
         Self {
-            lambda_counter: 0,
             lifted_functions: Vec::new(),
             func_free_vars: std::collections::HashMap::new(),
         }

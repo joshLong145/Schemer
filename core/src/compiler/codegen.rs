@@ -472,57 +472,6 @@ impl CodeGenerator {
         }
     }
 
-    /// Generate instructions into a result temporary
-    fn generate_expr_insts(&mut self, expr: &AnfExpr, result: &str) -> Vec<QbeInst> {
-        let mut insts = Vec::new();
-
-        match expr {
-            AnfExpr::Return(atom) => {
-                let val = self.generate_atom(atom, &mut insts);
-                insts.push(QbeInst::Assign {
-                    dest: result.to_string(),
-                    ty: QbeType::Long,
-                    op: QbeOp::Copy(val),
-                });
-            }
-
-            AnfExpr::Let { var, value, body } => {
-                let dest = self.bind_var(var);
-                self.generate_complex_into(value, &dest, &mut insts);
-                insts.extend(self.generate_expr_insts(body, result));
-            }
-
-            AnfExpr::Seq { effect, body } => {
-                let discard = self.fresh_temp();
-                self.generate_complex_into(effect, &discard, &mut insts);
-                insts.extend(self.generate_expr_insts(body, result));
-            }
-
-            AnfExpr::TailCall { func, args } => {
-                let func_val = self.generate_atom(func, &mut insts);
-                let arg_vals = self.generate_args(args, &mut insts);
-
-                insts.push(QbeInst::Call {
-                    dest: Some(result.to_string()),
-                    func: func_val,
-                    args: arg_vals,
-                });
-            }
-
-            AnfExpr::Halt(atom) => {
-                let val = self.generate_atom(atom, &mut insts);
-                insts.push(QbeInst::Call {
-                    dest: None,
-                    func: QbeValue::Global("scm_display".to_string()),
-                    args: vec![(QbeType::Long, val)],
-                });
-                insts.push(QbeInst::Hlt);
-            }
-        }
-
-        insts
-    }
-
     /// Generate a QBE value for an atom, emitting load instructions if needed
     /// Returns the QbeValue to use for the atom
     fn generate_atom(&mut self, atom: &Atom, insts: &mut Vec<QbeInst>) -> QbeValue {

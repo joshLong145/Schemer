@@ -11,6 +11,7 @@ use crate::tags::{self, get_pointer, get_tag, make_pointer, TAG_CLOSURE, VALUE_F
 /// But for simplicity, we'll use a heap-allocated structure with a special marker
 
 /// Object type marker for thunks
+#[allow(dead_code)]
 const OBJTYPE_THUNK: u64 = 0x5448554E4B0000; // "THUNK\0\0" as hex
 
 /// Thunk layout - represents a suspended tail call

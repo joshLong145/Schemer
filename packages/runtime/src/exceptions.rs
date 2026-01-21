@@ -30,6 +30,7 @@ impl Default for JmpBuf {
     }
 }
 
+#[allow(dead_code)]
 extern "C" {
     /// setjmp returns 0 on direct call, non-zero when returning via longjmp
     fn setjmp(buf: *mut JmpBuf) -> i32;
@@ -175,7 +176,7 @@ pub extern "C" fn scm_handler_depth() -> usize {
 #[no_mangle]
 pub extern "C" fn scm_exception_stack_depth() -> usize {
     unsafe {
-        HANDLERS
+        (*std::ptr::addr_of!(HANDLERS))
             .current_backtrace
             .as_ref()
             .map(|bt| bt.frames().len())

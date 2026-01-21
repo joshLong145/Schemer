@@ -91,7 +91,7 @@ pub fn init_symbols() {
 /// Clean up the symbol table
 pub fn cleanup_symbols() {
     unsafe {
-        if let Some(ptr) = SYMBOL_TABLE.take() {
+        if let Some(ptr) = (*std::ptr::addr_of_mut!(SYMBOL_TABLE)).take() {
             let _ = std::boxed::Box::from_raw(ptr);
         }
     }

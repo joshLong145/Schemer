@@ -14,7 +14,7 @@ pub mod link;
 pub mod primitives;
 pub mod qbe;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::parser::read_all;
 

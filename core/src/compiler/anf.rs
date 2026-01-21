@@ -510,23 +510,6 @@ impl AnfTransformer {
         Ok(result)
     }
     
-    /// Replace the atom in the innermost Return with new_atom
-    fn replace_return_atom(&self, expr: AnfExpr, new_atom: Atom) -> AnfExpr {
-        match expr {
-            AnfExpr::Return(_) => AnfExpr::Return(new_atom),
-            AnfExpr::Let { var, value, body } => AnfExpr::Let {
-                var,
-                value,
-                body: Box::new(self.replace_return_atom(*body, new_atom)),
-            },
-            AnfExpr::Seq { effect, body } => AnfExpr::Seq {
-                effect,
-                body: Box::new(self.replace_return_atom(*body, new_atom)),
-            },
-            other => other, // TailCall, Halt unchanged
-        }
-    }
-    
     /// Helper: given an ANF expression that computes a value, make it store
     /// that value into `dest_var` and then continue with `continuation`
     fn prepend_anf_returning_to(&self, anf: AnfExpr, dest_var: VarId, continuation: AnfExpr) -> AnfExpr {
@@ -557,7 +540,7 @@ impl AnfTransformer {
                 }
             }
             // TailCall and Halt shouldn't appear in quote contexts
-            other => {
+            _ => {
                 // Fallback - shouldn't happen for quote
                 AnfExpr::Seq {
                     effect: ComplexExpr::PrimApp {
@@ -567,28 +550,6 @@ impl AnfTransformer {
                     body: Box::new(continuation),
                 }
             }
-        }
-    }
-
-    fn rewrite_to_return(&self, _anf: AnfExpr, final_atom: Atom) -> AnfExpr {
-        // Simplified - in practice we'd thread this through properly
-        AnfExpr::Return(final_atom)
-    }
-
-    fn replace_innermost_return(&self, expr: AnfExpr, new_atom: Atom) -> AnfExpr {
-        match expr {
-            AnfExpr::Return(_) => AnfExpr::Return(new_atom),
-            AnfExpr::Let { var, value, body } => AnfExpr::Let {
-                var,
-                value,
-                body: Box::new(self.replace_innermost_return(*body, new_atom)),
-            },
-            AnfExpr::Seq { effect, body } => AnfExpr::Seq {
-                effect,
-                body: Box::new(self.replace_innermost_return(*body, new_atom)),
-            },
-            AnfExpr::TailCall { func, args } => AnfExpr::TailCall { func, args },
-            AnfExpr::Halt(atom) => AnfExpr::Halt(atom),
         }
     }
 
