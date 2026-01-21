@@ -1,0 +1,31 @@
+[env]
+RUST_LOG = "DEBUG"
+SCHEMER_RUNTIME_PATH = "./packages/runtime/target/release/libschemer_runtime.a"
+
+[tasks.format]
+install_crate = "rustfmt"
+command = "cargo"
+args = ["fmt", "--", "--emit=files"]
+
+[tasks.clean]
+command = "cargo"
+args = ["clean"]
+
+[tasks.build]
+command = "cargo"
+args = ["build"]
+dependencies = ["clean"]
+
+[tasks.test]
+command = "cargo"
+args = ["test"]
+dependencies = ["clean"]
+
+
+[tasks.c-def-arch]
+command = "cargo"
+args=["run", "--bin", "schemer", "--", "--compile", "${@}", "--output", "./a.out"]
+
+[tasks.get-ir]
+command = "cat"
+args = ["/var/folders/nh/rv3y117n2fz67w7jld2frq3m0000gn/T/schemer_compile/program.ssa"]
