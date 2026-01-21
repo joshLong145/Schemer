@@ -72,7 +72,7 @@ pub fn compile(source: &str, output: &Path, options: CompileOptions) -> Result<(
     let qbe_module = generator.generate(&converted);
 
     // Step 5: Write QBE IR
-    let qbe_ir = qbe_module.to_string();
+    let qbe_ir = qbe_module.render();
 
     if options.emit_qbe {
         std::fs::write(output, &qbe_ir).map_err(|e| CompileError::IoError(e.to_string()))?;

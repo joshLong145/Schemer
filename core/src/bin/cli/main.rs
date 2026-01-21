@@ -48,7 +48,7 @@ fn main() {
             // Compile mode
             let output = m
                 .get_one::<String>("output")
-                .map(|s| s.clone())
+                .cloned()
                 .unwrap_or_else(|| {
                     // Default: input.scm -> input (no extension)
                     std::path::Path::new(path)

@@ -187,7 +187,7 @@ impl CodeGenerator {
 
         // If function has environment, first param is the closure
         if func.has_env {
-            let env_temp = format!("env");
+            let env_temp = "env".to_string();
             self.var_map.insert(VarId::new("__env"), env_temp.clone());
             params.push((QbeType::Long, env_temp));
             trace!(target: "codegen", "  Function '{}': added __env parameter", func.label);
@@ -1213,7 +1213,7 @@ mod tests {
         "#,
         );
         println!("=== QBE IR for lambda call ===");
-        println!("{}", module.to_string());
+        println!("{}", module.render());
     }
 
     #[test]
@@ -1234,6 +1234,6 @@ mod tests {
         "#,
         );
         println!("=== QBE IR for recursion ===");
-        println!("{}", module.to_string());
+        println!("{}", module.render());
     }
 }

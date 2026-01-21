@@ -85,7 +85,7 @@ impl ClosureConverter {
 
         // Combine all functions
         let mut all_functions = converted_functions;
-        all_functions.extend(self.lifted_functions.drain(..));
+        all_functions.append(&mut self.lifted_functions);
 
         info!(
             target: "closure",

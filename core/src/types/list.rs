@@ -183,7 +183,7 @@ impl IntoIterator for SchemeList {
     }
 }
 
-impl<'a> IntoIterator for &'a SchemeList {
+impl IntoIterator for &SchemeList {
     type Item = Value;
     type IntoIter = SchemeListIter;
 

@@ -166,8 +166,7 @@ pub fn read_value(tokens: &mut VecDeque<String>) -> Result<Value, ParserError> {
         let next = tokens.pop_front().unwrap();
 
         // Check for character literal: #\x or #\newline etc.
-        if next.starts_with('\\') {
-            let char_str = &next[1..];
+        if let Some(char_str) = next.strip_prefix('\\') {
             let c = match char_str {
                 "newline" => '\n',
                 "space" => ' ',

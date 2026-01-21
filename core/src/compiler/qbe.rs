@@ -470,7 +470,8 @@ impl QbeModule {
         Self::default()
     }
 
-    pub fn to_string(&self) -> String {
+    /// Render the module to QBE IR text format
+    pub fn render(&self) -> String {
         let mut out = String::new();
 
         // Write data section first
