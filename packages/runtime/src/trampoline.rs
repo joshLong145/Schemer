@@ -9,7 +9,6 @@ use crate::tags::{self, get_pointer, get_tag, make_pointer, TAG_CLOSURE, VALUE_F
 /// Thunk tag - we use a special tag in the immediate space
 /// A thunk is represented as: TAG_IMMEDIATE | (THUNK_MARKER << 3) | (thunk_ptr << 8)
 /// But for simplicity, we'll use a heap-allocated structure with a special marker
-
 /// Object type marker for thunks
 #[allow(dead_code)]
 const OBJTYPE_THUNK: u64 = 0x5448554E4B0000; // "THUNK\0\0" as hex
@@ -178,8 +177,11 @@ fn call_with_args(closure: Value, args: Value) -> Value {
 }
 
 /// Call a closure with an array of arguments (public version for apply)
-pub fn call_with_args_array(closure: Value, func_ptr: *const (), args: &[u64]) -> Value {
-    unsafe {
+///
+/// # Safety
+/// `func_ptr` must be a valid function pointer with the correct signature for the argument count.
+pub unsafe fn call_with_args_array(closure: Value, func_ptr: *const (), args: &[u64]) -> Value {
+    {
         type Fn0 = extern "C" fn(Value) -> Value;
         type Fn1 = extern "C" fn(Value, Value) -> Value;
         type Fn2 = extern "C" fn(Value, Value, Value) -> Value;

@@ -127,14 +127,14 @@ pub extern "C" fn scm_alloc_closure(func: *const (), ncaptures: u64) -> Value {
 
 /// Allocate a string from a C string pointer and length
 #[no_mangle]
-pub extern "C" fn scm_alloc_string(data: *const u8, len: u64) -> Value {
+/// # Safety
+/// `data` must point to at least `len` valid bytes.
+pub unsafe extern "C" fn scm_alloc_string(data: *const u8, len: u64) -> Value {
     let size = tags::STRING_DATA_OFFSET + len as usize;
     let ptr = alloc(size) as *mut ScmString;
-    unsafe {
-        (*ptr).length = len;
-        let dest = (*ptr).data.as_mut_ptr();
-        std::ptr::copy_nonoverlapping(data, dest, len as usize);
-    }
+    (*ptr).length = len;
+    let dest = (*ptr).data.as_mut_ptr();
+    std::ptr::copy_nonoverlapping(data, dest, len as usize);
     make_pointer(ptr as u64, TAG_STRING)
 }
 
@@ -271,9 +271,11 @@ pub extern "C" fn scm_box_set(scm_box: Value, value: Value) -> Value {
 // =============================================================================
 
 /// Intern a symbol (returns existing or creates new)
+/// # Safety
+/// `name` must point to at least `len` valid UTF-8 bytes.
 #[no_mangle]
-pub extern "C" fn scm_intern_symbol(name: *const u8, len: u64) -> Value {
-    unsafe {
+pub unsafe extern "C" fn scm_intern_symbol(name: *const u8, len: u64) -> Value {
+    {
         let table = SYMBOL_TABLE.expect("Symbol table not initialized");
         let name_str =
             std::str::from_utf8_unchecked(std::slice::from_raw_parts(name, len as usize));

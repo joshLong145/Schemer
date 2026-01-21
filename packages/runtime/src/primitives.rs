@@ -412,10 +412,10 @@ pub extern "C" fn scm_assoc(key: Value, alist: Value) -> Value {
     let mut current = alist;
     while current != tags::VALUE_NIL {
         let pair = crate::types::scm_car(current);
-        if get_tag(pair) == tags::TAG_PAIR {
-            if scm_equal(key, crate::types::scm_car(pair)) == tags::VALUE_TRUE {
-                return pair;
-            }
+        if get_tag(pair) == tags::TAG_PAIR
+            && scm_equal(key, crate::types::scm_car(pair)) == tags::VALUE_TRUE
+        {
+            return pair;
         }
         current = crate::types::scm_cdr(current);
     }
@@ -428,10 +428,8 @@ pub extern "C" fn scm_assq(key: Value, alist: Value) -> Value {
     let mut current = alist;
     while current != tags::VALUE_NIL {
         let pair = crate::types::scm_car(current);
-        if get_tag(pair) == tags::TAG_PAIR {
-            if key == crate::types::scm_car(pair) {
-                return pair;
-            }
+        if get_tag(pair) == tags::TAG_PAIR && key == crate::types::scm_car(pair) {
+            return pair;
         }
         current = crate::types::scm_cdr(current);
     }
@@ -640,11 +638,12 @@ pub extern "C" fn scm_apply(func: Value, args: Value) -> Value {
     // Build args array on stack (for small arities)
     let mut arg_array = [0u64; 8];
     current = args;
-    for i in 0..argc.min(8) {
-        arg_array[i] = crate::types::scm_car(current);
+    for slot in arg_array.iter_mut().take(argc.min(8)) {
+        *slot = crate::types::scm_car(current);
         current = crate::types::scm_cdr(current);
     }
 
     // Call through trampoline
-    crate::trampoline::call_with_args_array(func, func_ptr, &arg_array[..argc])
+    // SAFETY: func_ptr is extracted from a valid closure and matches the expected arity
+    unsafe { crate::trampoline::call_with_args_array(func, func_ptr, &arg_array[..argc]) }
 }

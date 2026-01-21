@@ -1,7 +1,7 @@
 [env]
 RUST_LOG = { value = "error", condition = { env_not_set = ["RUST_LOG"] } }
 SCHEMER_RUNTIME_PATH = "./packages/runtime/target/release/libschemer_runtime.a"
-SCHEMER_TEMP_DIR = "<path-to-tmp-folder>"
+SCHEMER_TEMP_DIR = "./tmp"
 
 # ==============================================================================
 # Core

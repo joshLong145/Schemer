@@ -154,8 +154,10 @@ pub extern "C" fn scm_current_exception() -> Value {
 }
 
 /// Create an error object from a string
+/// # Safety
+/// `message` must point to at least `len` valid bytes.
 #[no_mangle]
-pub extern "C" fn scm_make_error(message: *const u8, len: u64) -> Value {
+pub unsafe extern "C" fn scm_make_error(message: *const u8, len: u64) -> Value {
     crate::types::scm_alloc_string(message, len)
 }
 
