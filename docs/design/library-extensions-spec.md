@@ -1,7 +1,7 @@
 # Schemer Library Extensions & Project Manifest Specification
 
 **Status:** Draft
-**Date:** 2026-02-07
+**Date:** 2026-07-04
 **Author:** Generated from codebase analysis
 
 ---
@@ -16,6 +16,7 @@ This specification defines two complementary features for Schemer:
 ### 1.1 Design Goals
 
 - **Minimal friction**: Writing a library extension should require only a Rust file exporting `extern "C"` functions and a small TOML descriptor.
+- **Self-describing libraries**: Extension metadata is embedded directly into the compiled `.a` static library — no sidecar files needed at Schemer compile time.
 - **Safe composition**: Multiple extensions can be linked into a single binary without symbol conflicts.
 - **No runtime modification**: Extensions are static libraries linked alongside `libschemer_runtime.a` — the core runtime is never patched.
 - **Familiar tooling**: The manifest format (`schemer.toml`) follows conventions from Cargo.toml and is processed at compile time, not interpretation time.
@@ -65,12 +66,23 @@ The compiler knows about primitive operations through two mechanisms:
 
 The `Linker` struct (`core/src/compiler/link.rs:82`) produces executables by:
 1. Writing QBE IR to a `.ssa` file.
-2. Invoking `qbe` to produce assembly.
-3. Invoking `clang` to link `program.s` + `libschemer_runtime.a` + system libs (`-lSystem` on macOS, `-lc` on Linux).
+2. Invoking `qbe` to produce assembly (`.s`). QBE does not produce object files directly.
+3. Invoking `clang` to assemble `program.s` and link against `libschemer_runtime.a` + system libs in a single pass.
 
 The runtime is found via `SCHEMER_RUNTIME_PATH` env var or searched in standard locations.
 
-### 2.4 Prelude
+### 2.4 Object File Format
+
+The primary development target is **macOS arm64**, where object files in `.a` archives are **Mach-O**, not ELF. The secondary target is **Linux aarch64**, which uses ELF. These have different section naming conventions:
+
+| | Mach-O (macOS) | ELF (Linux) |
+|---|---|---|
+| Custom section name | `__DATA,__schemer_meta` | `.schemer_meta` |
+| Rust `#[link_section]` value | `"__DATA,__schemer_meta"` | `".schemer_meta"` |
+
+The `object` crate provides a uniform API for reading both formats.
+
+### 2.5 Prelude
 
 `lib/prelude.scm` is prepended to all compiled sources. It provides pure-Scheme standard library functions (`map`, `filter`, `fold-left`, etc.).
 
@@ -84,15 +96,40 @@ A library extension is a directory containing:
 
 ```
 my-extension/
-├── extension.toml       # Extension descriptor (required)
+├── extension.toml       # Extension descriptor — human-authored source of truth (recommended)
+├── build.rs             # Reads extension.toml, embeds metadata into the .a (required)
+├── Cargo.toml           # Standard Rust crate config (crate-type = ["staticlib"])
 ├── src/
-│   └── lib.rs           # Rust source implementing extern "C" functions
-├── Cargo.toml           # Standard Rust crate config
+│   └── lib.rs           # Rust source: extern "C" functions + metadata static
 └── lib/                 # Optional: Scheme prelude additions
     └── prelude.scm      # Scheme code loaded before user code
 ```
 
-### 3.2 Extension Descriptor (`extension.toml`)
+`extension.toml` is the **recommended** way to declare metadata. An extension author may instead construct the `ExtensionDescriptor` programmatically in `build.rs`, but `extension.toml` is the conventional approach. At Schemer compile time, only the compiled `.a` file is read — the TOML file is not required to be present.
+
+### 3.2 Extension Metadata: Two-Layer Model
+
+Extension metadata flows through two layers:
+
+```
+extension.toml          (human-authored source of truth)
+      │
+      ▼
+build.rs                (reads TOML, serializes to JSON, writes OUT_DIR/meta.bin)
+      │
+      ▼
+lib.rs                  (embeds meta.bin as a #[link_section] static)
+      │
+      ▼ cargo build --release
+lib{name}.a             (Mach-O/ELF .o members, one contains __schemer_meta section)
+      │
+      ▼ schemer build
+Schemer compiler        (reads .a with object crate, deserializes JSON → ExtensionDescriptor)
+```
+
+The compiled `.a` file is **self-describing**: it carries its own metadata and can be inspected without any sidecar files.
+
+#### `extension.toml` Format (unchanged from original design)
 
 ```toml
 [extension]
@@ -136,6 +173,24 @@ Extensions are Rust crates compiled to static libraries (`staticlib`). They must
 5. **Must declare GC interaction honestly** in `extension.toml`:
    - `can-gc = true` if the function allocates heap objects (`scm_alloc_*`, `scm_cons`, etc.) — this tells the compiler to emit GC safepoints around the call.
    - `can-raise = true` if the function calls `scm_raise` — this tells the compiler the call may not return normally.
+
+6. **Must include a `build.rs`** that reads `extension.toml` and writes a JSON-encoded `ExtensionDescriptor` to `OUT_DIR/meta.bin`. See Section 3.6 for the reference implementation.
+
+7. **Must embed metadata in `lib.rs`** using `#[link_section]` and `#[used]`:
+   ```rust
+   #[cfg_attr(target_os = "macos", link_section = "__DATA,__schemer_meta")]
+   #[cfg_attr(target_os = "linux", link_section = ".schemer_meta")]
+   #[used]
+   pub static SCHEMER_METADATA: &[u8] =
+       include_bytes!(concat!(env!("OUT_DIR"), "/meta.bin"));
+   ```
+   `#[used]` prevents rustc from dead-stripping the symbol before it reaches the archive. The section survives inside the `.o` members of the `.a` (archives are never stripped by the linker).
+
+8. **`Cargo.toml` requirements**:
+   - `crate-type = ["staticlib"]`
+   - `build = "build.rs"` under `[package]`
+   - `serde_json` and `serde` (with `derive` feature) in `[build-dependencies]`
+   - `toml` in `[build-dependencies]` (if using the conventional `extension.toml` approach)
 
 #### 3.3.1 Example Extension: `schemer-net`
 
@@ -192,6 +247,13 @@ extern "C" {
     fn scm_make_error(msg: *const u8, len: u64) -> Value;
 }
 
+// Metadata embedded into the compiled .a — Schemer reads this section at compile time
+#[cfg_attr(target_os = "macos", link_section = "__DATA,__schemer_meta")]
+#[cfg_attr(target_os = "linux", link_section = ".schemer_meta")]
+#[used]
+pub static SCHEMER_METADATA: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/meta.bin"));
+
 // Simple handle table for open connections
 static CONNECTIONS: Mutex<Option<HashMap<u64, TcpStream>>> = Mutex::new(None);
 
@@ -227,9 +289,11 @@ When an extension is listed in a project's `schemer.toml` (see Section 4), the c
 
 #### 3.4.1 Registration Phase (before compilation)
 
-1. **Parse `extension.toml`** for each declared extension.
-2. **Merge extension functions into the runtime function table.** Each `[[extension.functions]]` entry becomes a `RuntimeFn` appended to the list the codegen uses. The `scheme-name` is mapped as a new `PrimOp::ExtCall(symbol_name)` variant so the ANF transformer recognizes it.
-3. **Prepend extension preludes.** Any Scheme files listed in `[extension.prelude]` are prepended to the source (after the core prelude, before user code).
+1. **Read the `.a` file** for each declared extension using the `object` crate.
+2. **Find the `__schemer_meta` / `.schemer_meta` section** in the archive members.
+3. **Deserialize the JSON bytes** into an `ExtensionDescriptor`.
+4. **Merge extension functions into the runtime function table.** Each `functions` entry becomes a `RuntimeFn` appended to the list the codegen uses. The `scheme-name` is mapped as a new `PrimOp::ExtCall(symbol_name)` variant so the ANF transformer recognizes it.
+5. **Prepend extension preludes.** Any Scheme files listed in `prelude_files` are prepended to the source (after the core prelude, before user code). Prelude paths are relative to the extension's declared `path` in `schemer.toml`.
 
 #### 3.4.2 Compilation Phase (no changes needed)
 
@@ -271,14 +335,144 @@ Extensions are built as standard Rust static libraries:
 cd my-extension/
 cargo build --release
 # Produces: target/release/libmy_extension.a
+# The .a contains a __schemer_meta / .schemer_meta section with JSON metadata.
 ```
 
-The `Cargo.toml` must specify `crate-type = ["staticlib"]`:
+The `Cargo.toml` must specify:
 
 ```toml
+[package]
+name = "my-extension"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
 [lib]
 crate-type = ["staticlib"]
+
+[build-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
 ```
+
+---
+
+## 3.6 Extension Build Requirements
+
+Every extension crate must include a `build.rs` that embeds its metadata into the compiled `.a`.
+
+### Metadata JSON Schema
+
+The embedded JSON must deserialize into the `ExtensionDescriptor` struct (Section 6.1). The canonical schema:
+
+```json
+{
+  "name": "my-extension",
+  "version": "0.1.0",
+  "description": "...",
+  "functions": [
+    {
+      "symbol": "my_ext_do_thing",
+      "scheme_name": "do-thing",
+      "arity": 2,
+      "can_gc": false,
+      "can_raise": true
+    }
+  ],
+  "prelude_files": ["lib/prelude.scm"]
+}
+```
+
+Field names use `snake_case` (Rust convention) in the JSON, matching the `#[serde(rename_all = "snake_case")]` default.
+
+### Reference `build.rs` Implementation
+
+```rust
+// build.rs — reference implementation for Schemer extensions
+
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ExtMeta {
+    name: String,
+    version: String,
+    description: String,
+    functions: Vec<ExtFnMeta>,
+    prelude_files: Vec<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ExtFnMeta {
+    symbol: String,
+    scheme_name: String,
+    arity: usize,
+    can_gc: bool,
+    can_raise: bool,
+}
+
+fn main() {
+    // Re-run if extension.toml changes
+    println!("cargo:rerun-if-changed=extension.toml");
+
+    let manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("extension.toml");
+    let toml_str = fs::read_to_string(&manifest_path)
+        .expect("extension.toml not found — required for Schemer extension metadata");
+
+    let raw: toml::Value = toml::from_str(&toml_str)
+        .expect("extension.toml: invalid TOML");
+
+    let ext = &raw["extension"];
+    let functions_raw = ext.get("functions")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&vec![]);
+
+    let functions: Vec<ExtFnMeta> = functions_raw.iter().map(|f| ExtFnMeta {
+        symbol:      f["name"].as_str().unwrap().to_string(),
+        scheme_name: f["scheme-name"].as_str().unwrap().to_string(),
+        arity:       f["arity"].as_integer().unwrap() as usize,
+        can_gc:      f["can-gc"].as_bool().unwrap_or(false),
+        can_raise:   f["can-raise"].as_bool().unwrap_or(false),
+    }).collect();
+
+    let prelude_files = ext
+        .get("prelude")
+        .and_then(|p| p.get("files"))
+        .and_then(|f| f.as_array())
+        .map(|arr| arr.iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect())
+        .unwrap_or_default();
+
+    let meta = ExtMeta {
+        name:         ext["name"].as_str().unwrap().to_string(),
+        version:      ext["version"].as_str().unwrap().to_string(),
+        description:  ext.get("description")
+                         .and_then(|v| v.as_str())
+                         .unwrap_or("")
+                         .to_string(),
+        functions,
+        prelude_files,
+    };
+
+    let json = serde_json::to_vec(&meta).expect("failed to serialize extension metadata");
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    fs::write(out_dir.join("meta.bin"), &json)
+        .expect("failed to write meta.bin");
+}
+```
+
+### Section Name Convention
+
+| Platform | `#[link_section]` value | Query name (object crate) |
+|---|---|---|
+| macOS (Mach-O) | `"__DATA,__schemer_meta"` | `"__schemer_meta"` |
+| Linux (ELF) | `".schemer_meta"` | `".schemer_meta"` |
+
+The `object` crate's `section_by_name` matches on the section name only (not the Mach-O segment prefix), so querying `"__schemer_meta"` finds `__DATA,__schemer_meta` on macOS.
 
 ---
 
@@ -288,7 +482,7 @@ crate-type = ["staticlib"]
 
 A `schemer.toml` file in a directory marks it as a Schemer project. It declares:
 - The project's source files and entry point.
-- Dependencies on library extensions.
+- Dependencies on library extensions (as paths to compiled `.a` files or extension directories).
 - Build configuration (output name, optimization level, etc.).
 
 Running `schemer build` in a directory with a `schemer.toml` compiles the project into an executable, building any extension dependencies first.
@@ -326,7 +520,7 @@ linker-flags = []
 
 # Extension dependencies
 [dependencies]
-# Path-based dependency (local development)
+# Path-based dependency (points to extension source directory; Schemer builds it if needed)
 schemer-net = { path = "../extensions/schemer-net" }
 
 # Another extension
@@ -351,7 +545,7 @@ When compiling a project, sources are concatenated in this order:
 
 ```
 1. lib/prelude.scm              (core Schemer prelude)
-2. extension preludes            (in dependency declaration order)
+2. extension preludes            (in dependency declaration order, paths from ExtensionDescriptor.prelude_files)
 3. project sources[]             (in declared order)
 4. project entry                 (the main program)
 ```
@@ -378,9 +572,10 @@ The build process:
 1. **Parse `schemer.toml`** — validate the manifest.
 2. **Resolve extensions** — for each `[dependencies]` entry:
    a. Locate the extension directory (currently: path-based only).
-   b. Parse its `extension.toml`.
-   c. If the extension's static library doesn't exist (or is stale), **build it** by running `cargo build --release` in the extension directory.
-   d. Collect the `.a` library path and function descriptors.
+   b. If the extension's static library doesn't exist (or is stale), **build it** by running `cargo build --release` in the extension directory.
+   c. **Read the `.a` file** using the `object` crate to extract the `__schemer_meta` / `.schemer_meta` section.
+   d. **Deserialize the JSON** into an `ExtensionDescriptor`.
+   e. Collect the `.a` library path, function descriptors, and prelude file paths.
 3. **Assemble sources** — concatenate prelude + extension preludes + project sources + entry.
 4. **Compile** — run the standard pipeline (parse -> ANF -> closure conversion -> codegen -> QBE -> link), with:
    - Extension functions registered in the primitive table.
@@ -397,6 +592,7 @@ schemer [OPTIONS] [path]
 SUBCOMMANDS:
     build       Build a project from schemer.toml
     init        Initialize a new schemer.toml in the current directory
+    inspect     Print embedded metadata from a compiled extension .a file
 
 OPTIONS:
     -c, --compile           Compile a single file (existing behavior)
@@ -426,6 +622,14 @@ OPTIONS:
     --extension          Initialize as an extension instead of a project
 ```
 
+#### `schemer inspect`
+```
+schemer inspect <lib.a>
+
+Reads and displays the embedded ExtensionDescriptor from a compiled .a file.
+Useful for verifying that metadata was embedded correctly.
+```
+
 ### 5.3 `schemer init` Output
 
 For a project:
@@ -440,9 +644,10 @@ For an extension:
 ```
 my-extension/
 ├── extension.toml
-├── Cargo.toml           # [lib] crate-type = ["staticlib"]
+├── build.rs             # Reference build.rs (see Section 3.6)
+├── Cargo.toml           # [lib] crate-type = ["staticlib"], build = "build.rs"
 ├── src/
-│   └── lib.rs           # Skeleton with one #[no_mangle] extern "C" fn
+│   └── lib.rs           # Skeleton with SCHEMER_METADATA static + one #[no_mangle] extern "C" fn
 └── lib/
     └── prelude.scm      # Empty
 ```
@@ -456,7 +661,8 @@ my-extension/
 ```rust
 // core/src/compiler/manifest.rs (new file)
 
-/// Parsed extension.toml
+/// Descriptor extracted from the __schemer_meta section of a compiled .a file
+#[derive(Debug, serde::Deserialize)]
 pub struct ExtensionDescriptor {
     pub name: String,
     pub version: String,
@@ -466,6 +672,7 @@ pub struct ExtensionDescriptor {
 }
 
 /// A function exported by an extension
+#[derive(Debug, serde::Deserialize)]
 pub struct ExtensionFn {
     /// C symbol name (e.g. "scm_net_tcp_connect")
     pub symbol: String,
@@ -574,9 +781,12 @@ A new top-level function `compile_project()` orchestrates manifest-based compila
 ```rust
 /// Compile a project from a schemer.toml manifest
 pub fn compile_project(manifest_path: &Path) -> Result<(), CompileError> {
-    // 1. Parse manifest
-    // 2. Resolve extensions (build if needed)
-    // 3. Register extension functions
+    // 1. Parse schemer.toml
+    // 2. Resolve extensions:
+    //    a. Run cargo build --release if .a is stale
+    //    b. Call read_extension_meta() to extract descriptor from .a
+    //    c. Load prelude files
+    // 3. Register extension functions into primitive table
     // 4. Assemble source (prelude + ext preludes + sources + entry)
     // 5. Compile with extended primitive table
     // 6. Link with extension libraries
@@ -586,19 +796,64 @@ pub fn compile_project(manifest_path: &Path) -> Result<(), CompileError> {
 ### 6.7 New Module: `core/src/compiler/manifest.rs`
 
 Responsibilities:
-- Parse `schemer.toml` (using `toml` crate).
-- Parse `extension.toml`.
-- Resolve extension paths and build them.
+- Parse `schemer.toml` (using `toml` crate, for the project manifest only).
+- **Read extension metadata from `.a` files** using the `object` crate.
+- Resolve extension paths and build them via `cargo build --release`.
 - Produce `ResolvedExtension` values for the compiler.
 
-### 6.8 Dependency: `toml` crate
+Key function:
 
-Add to `core/Cargo.toml`:
+```rust
+use object::{read::archive::ArchiveFile, File as ObjFile, Object, ObjectSection};
+
+/// Extract ExtensionDescriptor from a compiled .a static library.
+/// Reads the __schemer_meta (macOS) or .schemer_meta (Linux) section
+/// embedded by the extension's build.rs.
+pub fn read_extension_meta(lib_path: &Path) -> Result<ExtensionDescriptor, ManifestError> {
+    let bytes = std::fs::read(lib_path)
+        .map_err(|e| ManifestError::IoError(lib_path.to_owned(), e))?;
+
+    let archive = ArchiveFile::parse(&*bytes)
+        .map_err(|_| ManifestError::NotAnArchive(lib_path.to_owned()))?;
+
+    for member in archive.members() {
+        let member = member.map_err(|_| ManifestError::ArchiveMemberError)?;
+        let data = member.data(&*bytes).map_err(|_| ManifestError::ArchiveMemberError)?;
+
+        if let Ok(obj) = ObjFile::parse(data) {
+            // The object crate matches on section name only (not Mach-O segment prefix),
+            // so "__schemer_meta" finds __DATA,__schemer_meta on macOS.
+            let section_name = if cfg!(target_os = "macos") {
+                "__schemer_meta"
+            } else {
+                ".schemer_meta"
+            };
+
+            if let Some(section) = obj.section_by_name(section_name) {
+                let meta_bytes = section.data()
+                    .map_err(|_| ManifestError::SectionReadError)?;
+                return serde_json::from_slice(meta_bytes)
+                    .map_err(|e| ManifestError::MetaDeserializeError(e));
+            }
+        }
+    }
+
+    Err(ManifestError::SectionNotFound(lib_path.to_owned()))
+}
+```
+
+### 6.8 Dependencies
+
+`core/Cargo.toml`:
 ```toml
 [dependencies]
-toml = "0.8"
+toml = "0.8"         # for parsing schemer.toml (project manifest only)
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"     # for deserializing embedded extension metadata
+object = "0.36"      # for reading .a archives and Mach-O/ELF sections
 ```
+
+Note: `toml` is still needed for `schemer.toml` project manifest parsing, but is **no longer** used for reading extension descriptors (those come from the embedded JSON section). The `toml` dependency moves to extension `build.rs` for authoring, and remains in `core` only for project manifest parsing.
 
 ---
 
@@ -607,33 +862,58 @@ serde = { version = "1", features = ["derive"] }
 | File | Change |
 |------|--------|
 | `core/src/compiler/mod.rs` | Add `manifest` module, `compile_project()` function |
-| `core/src/compiler/manifest.rs` | **New**: manifest/extension parsing and resolution |
+| `core/src/compiler/manifest.rs` | **New**: `read_extension_meta()` (object crate), `schemer.toml` parsing, extension resolution |
 | `core/src/compiler/anf.rs` | Add `PrimOp::ExtCall(String)` variant |
 | `core/src/compiler/primitives.rs` | Handle `ExtCall` in `get_primitive_impl()`, support dynamic fn registration |
 | `core/src/compiler/link.rs` | Add `extension_libs: Vec<PathBuf>` to `Linker`, link them in `link()` |
 | `core/src/compiler/codegen.rs` | No changes needed (already handles `RuntimeCall` generically) |
-| `core/src/bin/cli/main.rs` | Add `build` and `init` subcommands |
-| `core/Cargo.toml` | Add `toml`, `serde` dependencies |
+| `core/src/bin/cli/main.rs` | Add `build`, `init`, and `inspect` subcommands |
+| `core/Cargo.toml` | Add `serde_json`, `object = "0.36"`; keep `toml`, `serde` |
+| Each extension crate | Add `build.rs` (Section 3.6), update `lib.rs` with metadata static, update `Cargo.toml` |
 
 ---
 
 ## 8. Extension Discovery at Compile Time
 
-Extensions are resolved **entirely at compile time**. There is no runtime extension loading. The flow is:
+Extensions are resolved **entirely at compile time**. There is no runtime extension loading. The discovery flow no longer reads sidecar TOML files — it reads directly from the compiled `.a`:
 
 ```
 schemer.toml
     │
-    ├── [dependencies] ──> extension.toml
-    │                          │
-    │                          ├── functions[] ──> registered as PrimOp::ExtCall
-    │                          ├── prelude ──> prepended to source
-    │                          └── Cargo.toml ──> built via cargo build --release
-    │                                              produces lib{name}.a
-    │
-    └── compile + link
+    └── [dependencies]
           │
-          └── clang program.s libschemer_runtime.a lib{ext1}.a lib{ext2}.a -lSystem
+          └── path to extension directory
+                │
+                ├── cargo build --release (if .a stale)
+                │     └── build.rs reads extension.toml
+                │           └── embeds JSON into .a section
+                │
+                └── read_extension_meta(lib.a)
+                      │
+                      ├── object crate: parse .a archive
+                      ├── find __schemer_meta / .schemer_meta section in .o member
+                      └── serde_json: deserialize -> ExtensionDescriptor
+                              │
+                              ├── functions[] -> PrimOp::ExtCall entries
+                              ├── prelude_files -> prepended Scheme source
+                              └── lib_path -> added to clang link command
+```
+
+The `.a` file is the **single source of truth** at Schemer compile time. If an extension's `extension.toml` is edited, the `.a` is considered stale and `cargo build` re-embeds the updated metadata. Schemer never reads `extension.toml` directly.
+
+### Inspecting Embedded Metadata
+
+```bash
+schemer inspect libschemer_net.a
+# Output:
+# Extension: schemer-net v0.1.0
+# Description: Basic TCP networking for Schemer
+# Functions:
+#   tcp-connect  (scm_net_tcp_connect, arity=2, can-gc, can-raise)
+#   tcp-read     (scm_net_tcp_read,    arity=1, can-gc, can-raise)
+#   tcp-write    (scm_net_tcp_write,   arity=2, can-raise)
+#   tcp-close    (scm_net_tcp_close,   arity=1, can-raise)
+# Prelude files: (none)
 ```
 
 ---
@@ -665,8 +945,9 @@ This matches how existing runtime functions like `scm_cons(car, cdr)` and `scm_d
 | `ManifestNotFound` | No `schemer.toml` in current directory |
 | `ManifestParseError` | Invalid TOML syntax or missing required fields |
 | `ExtensionNotFound` | Dependency path doesn't exist |
-| `ExtensionDescriptorError` | Invalid `extension.toml` |
 | `ExtensionBuildError` | `cargo build` fails for an extension |
+| `SectionNotFound` | Compiled `.a` has no `__schemer_meta` / `.schemer_meta` section — extension was not built with a compliant `build.rs` |
+| `MetaDeserializeError` | Embedded section bytes are not valid JSON or don't match `ExtensionDescriptor` schema |
 | `DuplicateSymbol` | Two extensions export the same C symbol name |
 | `DuplicateSchemeName` | Two extensions export the same Scheme name |
 | `SymbolConflict` | Extension Scheme name conflicts with a built-in primitive |
@@ -676,6 +957,7 @@ This matches how existing runtime functions like `scm_cons(car, cdr)` and `scm_d
 Extension compilation failures surface as:
 1. Scheme-name not found → standard "unbound variable" error (the ANF transformer already handles this).
 2. Symbol not resolved at link time → linker error ("undefined symbol: scm_net_tcp_connect") — indicates the extension library wasn't built or wasn't linked.
+3. Missing metadata section → `SectionNotFound` error with a hint: "Ensure your extension crate includes a compliant build.rs and the SCHEMER_METADATA static."
 
 ---
 
@@ -687,9 +969,10 @@ These are explicitly out of scope for v1 but recorded for future consideration:
 2. **Registry** — `schemer add schemer-net` fetches from a package registry.
 3. **R7RS `define-library`** — Scheme-level module system that can wrap extension functions.
 4. **Shared library extensions** — `.dylib`/`.so` loaded at runtime for the interpreter.
-5. **C extension API** — allow extensions written in plain C (not just Rust).
+5. **C extension API** — allow extensions written in plain C (not just Rust). C compilers can embed custom sections via `__attribute__((section(...)))`.
 6. **Extension templates** — `schemer init --extension --template net` generates boilerplate.
-7. **Cross-compilation** — build extensions for a different target triple than the host.
+7. **Cross-compilation** — build extensions for a different target triple than the host. Note: the `object` crate reads both Mach-O and ELF regardless of host, so cross-compiled `.a` files are inspectable on any host.
+8. **Proc-macro metadata** — replace `build.rs` + TOML with a derive macro that generates the `SCHEMER_METADATA` static directly from annotations on exported functions.
 
 ---
 
@@ -704,6 +987,7 @@ my-game/
 └── extensions/
     └── schemer-sdl/
         ├── extension.toml
+        ├── build.rs
         ├── Cargo.toml
         ├── src/
         │   └── lib.rs
@@ -772,10 +1056,62 @@ can-raise = false
 files = ["lib/prelude.scm"]
 ```
 
+`extensions/schemer-sdl/Cargo.toml`:
+```toml
+[package]
+name = "schemer-sdl"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[lib]
+crate-type = ["staticlib"]
+
+[build-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+```
+
+`extensions/schemer-sdl/build.rs`:
+
+See the reference implementation in Section 3.6. For `schemer-sdl`, the same pattern applies — the build script reads `extension.toml` and writes `OUT_DIR/meta.bin`.
+
+`extensions/schemer-sdl/src/lib.rs`:
+```rust
+// Metadata embedded into the compiled .a for Schemer compiler discovery
+#[cfg_attr(target_os = "macos", link_section = "__DATA,__schemer_meta")]
+#[cfg_attr(target_os = "linux", link_section = ".schemer_meta")]
+#[used]
+pub static SCHEMER_METADATA: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/meta.bin"));
+
+type Value = u64;
+
+extern "C" {
+    fn scm_alloc_string(data: *const u8, len: u64) -> Value;
+    fn scm_raise(value: Value) -> !;
+    fn scm_make_error(msg: *const u8, len: u64) -> Value;
+}
+
+#[no_mangle]
+pub extern "C" fn scm_sdl_init() -> Value { todo!() }
+
+#[no_mangle]
+pub extern "C" fn scm_sdl_create_window(title: Value, w: Value, h: Value, flags: Value) -> Value { todo!() }
+
+#[no_mangle]
+pub extern "C" fn scm_sdl_draw_pixel(win: Value, x: Value, y: Value) -> Value { todo!() }
+
+#[no_mangle]
+pub extern "C" fn scm_sdl_present(win: Value) -> Value { todo!() }
+
+#[no_mangle]
+pub extern "C" fn scm_sdl_quit() -> Value { todo!() }
+```
+
 `extensions/schemer-sdl/lib/prelude.scm`:
 ```scheme
-;;; SDL convenience functions
-
 (define (with-window title w h body)
   (sdl-init)
   (let ((win (sdl-create-window title w h 0)))
@@ -812,10 +1148,16 @@ Build:
 ```bash
 cd my-game
 schemer build
-# 1. Builds extensions/schemer-sdl -> libschemer_sdl.a
-# 2. Compiles src/grid.scm + src/main.scm (with sdl prelude + core prelude)
-# 3. Links: program.s + libschemer_runtime.a + libschemer_sdl.a + -lSDL2 -lSystem
-# 4. Produces: ./game
+# 1. Detects extensions/schemer-sdl is stale
+# 2. Runs: cd extensions/schemer-sdl && cargo build --release
+#    build.rs reads extension.toml -> writes meta.bin
+#    rustc embeds meta.bin into __DATA,__schemer_meta section of lib.o
+#    ar packs -> libschemer_sdl.a (self-describing)
+# 3. Runs: schemer inspect (internally) -> reads __schemer_meta -> ExtensionDescriptor
+# 4. Registers sdl-init, sdl-create-window, etc. as PrimOp::ExtCall
+# 5. Compiles src/grid.scm + src/main.scm (with sdl prelude + core prelude)
+# 6. Links: program.s + libschemer_runtime.a + libschemer_sdl.a + -lSDL2 -lSystem
+# 7. Produces: ./game
 ```
 
 ---
@@ -823,16 +1165,20 @@ schemer build
 ## 13. Implementation Phases
 
 ### Phase 1: Manifest Parsing & Project Build
-- Implement `schemer.toml` parsing.
+- Implement `schemer.toml` parsing (TOML, project manifest only).
 - Implement `schemer build` for simple projects (no extensions).
 - Multi-source file concatenation.
 - `schemer init` scaffolding.
 
-### Phase 2: Extension Descriptor & Linking
-- Implement `extension.toml` parsing.
+### Phase 2: Extension Metadata & Linking
+- Implement `read_extension_meta()` using the `object` crate (`object = "0.36"`).
+  - Parse `.a` archive members.
+  - Find `__schemer_meta` (macOS) / `.schemer_meta` (Linux) section.
+  - Deserialize JSON → `ExtensionDescriptor`.
 - Extend `Linker` to accept additional static libraries.
-- Build extensions via `cargo build --release`.
+- Build extensions via `cargo build --release` when stale.
 - Link extension `.a` files.
+- Implement `schemer inspect <lib.a>` subcommand.
 
 ### Phase 3: Extension Function Registration
 - Add `PrimOp::ExtCall(String)` to ANF.
@@ -841,7 +1187,7 @@ schemer build
 - Validation: duplicate symbols, conflicts with builtins.
 
 ### Phase 4: Extension Preludes & Polish
-- Extension prelude loading and ordering.
-- `schemer init --extension` scaffolding.
-- Error messages and diagnostics.
+- Extension prelude loading and ordering (paths from `ExtensionDescriptor.prelude_files`, resolved relative to extension directory).
+- `schemer init --extension` scaffolding (generates `build.rs`, `extension.toml`, and the `SCHEMER_METADATA` static in `lib.rs`).
+- Error messages and diagnostics, including `SectionNotFound` hint.
 - Documentation and examples.
