@@ -1,6 +1,6 @@
 [env]
 RUST_LOG = { value = "error", condition = { env_not_set = ["RUST_LOG"] } }
-SCHEMER_RUNTIME_PATH = "./packages/runtime/target/release/libschemer_runtime.a"
+SCHEMER_RUNTIME_PATH = "./target/release/libschemer_runtime.a"
 SCHEMER_TEMP_DIR = "./tmp"
 
 # ==============================================================================
@@ -58,15 +58,15 @@ args = ["run", "--bin", "schemer", "--", "--compile", "${@}", "--output", "./a.o
 
 [tasks.show-ir]
 command = "cat"
-args = ["${SCHEMER_TEMP_DIR}/program.ssa"]
+args = ["${SCHEMER_TEMP_DIR}/schemer_compile/program.ssa"]
 
 [tasks.show-asm]
 command = "cat"
-args = ["${SCHEMER_TEMP_DIR}/program.s"]
+args = ["${SCHEMER_TEMP_DIR}/schemer_compile/program.s"]
 
 [tasks.inspect]
 script_runner = "@shell"
 script = '''
-echo "=== QBE IR ===" && cat ${SCHEMER_TEMP_DIR}/program.ssa
-echo "\n=== Assembly ===" && cat ${SCHEMER_TEMP_DIR}/program.s
+echo "=== QBE IR ===" && cat ${SCHEMER_TEMP_DIR}/schemer_compile/program.ssa
+echo "\n=== Assembly ===" && cat ${SCHEMER_TEMP_DIR}/schemer_compile/program.s
 '''
