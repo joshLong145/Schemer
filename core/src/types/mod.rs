@@ -1,7 +1,9 @@
+pub mod env;
 pub mod list;
 pub mod pair;
 pub mod value;
 
+pub use env::{Closure, Env};
 pub use list::SchemeList;
 pub use value::{Number, Procedure, Value};
 

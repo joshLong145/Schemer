@@ -1,9 +1,12 @@
 use std::{
+    cell::RefCell,
     collections::HashMap,
     fmt::{self, Display, Formatter},
+    rc::Rc,
     sync::Arc,
 };
 
+use crate::types::env::Closure;
 use crate::types::list::SchemeList;
 
 /// Scheme number representation (simple tower)
@@ -65,12 +68,32 @@ pub enum Value {
     Symbol(String),
     /// Void (result of define, set!, etc.)
     Void,
+    /// Mutable cell, used by the ANF interpreter for `set!`/mutable captured
+    /// variables (`MakeBox`/`ReadBox`/`WriteBox`). The compiled runtime has
+    /// an equivalent (`Box` in `runtime_types`); this fills the same gap for
+    /// the tree-walking interpreter.
+    Box(Rc<RefCell<Value>>),
+    /// A closure produced by the ANF interpreter (`ComplexExpr::MakeClosure`):
+    /// a function label plus the lexical environment captured at creation.
+    /// Distinct from `Procedure` (which belongs to the older Value-walking
+    /// evaluator, `core/src/eval.rs`) since the two closures have
+    /// incompatible internal shapes (label+env-chain vs body+env-map).
+    Closure(Closure),
 }
 
 impl Value {
     /// R7RS truthiness: only #f is falsy
     pub fn is_truthy(&self) -> bool {
         !matches!(self, Value::Boolean(false))
+    }
+
+    /// Extract a `Closure` from a `Value`, for use as the callee of an
+    /// application. Errors with a descriptive message otherwise.
+    pub fn expect_closure(&self) -> Result<Closure, String> {
+        match self {
+            Value::Closure(c) => Ok(c.clone()),
+            other => Err(format!("not a procedure: {}", other)),
+        }
     }
 }
 
@@ -91,6 +114,8 @@ impl Display for Value {
             Value::Nil => write!(f, "()"),
             Value::Symbol(s) => write!(f, "{}", s),
             Value::Void => write!(f, "#<void>"),
+            Value::Box(_) => write!(f, "#<box>"),
+            Value::Closure(_) => write!(f, "#<closure>"),
         }
     }
 }

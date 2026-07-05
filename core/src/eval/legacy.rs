@@ -20,6 +20,8 @@ pub fn eval_value(
         | Value::Char(_)
         | Value::String(_)
         | Value::Procedure(_)
+        | Value::Box(_)
+        | Value::Closure(_)
         | Value::Void => Ok(expr),
 
         // Symbol lookup (R7RS 4.1.1)
