@@ -5,33 +5,28 @@
 
 use std::collections::HashSet;
 
+use crate::interner::{Interner, Symbol};
 use crate::types::Value;
 
 /// Unique identifier for variables/temporaries
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct VarId(pub String);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct VarId(pub Symbol);
 
 impl VarId {
-    pub fn new(name: &str) -> Self {
-        VarId(name.to_string())
+    pub fn new(name: &str, interner: &mut Interner) -> Self {
+        VarId(interner.intern(name))
     }
 
-    pub fn temp(id: u64) -> Self {
-        VarId(format!("_t{}", id))
+    pub fn temp(id: u64, interner: &mut Interner) -> Self {
+        VarId(interner.intern(&format!("_t{}", id)))
     }
 
-    pub fn is_temp(&self) -> bool {
-        self.0.starts_with("_t")
+    pub fn is_temp(&self, interner: &Interner) -> bool {
+        interner.resolve(self.0).starts_with("_t")
     }
 
-    pub fn name(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for VarId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+    pub fn name<'a>(&self, interner: &'a Interner) -> &'a str {
+        interner.resolve(self.0)
     }
 }
 
@@ -117,7 +112,7 @@ pub enum ComplexExpr {
     /// Lambda/closure creation (after closure conversion, captures explicit)
     MakeClosure {
         /// Unique function label
-        label: String,
+        label: Symbol,
         /// Free variables to capture
         captures: Vec<VarId>,
     },
@@ -179,7 +174,7 @@ pub enum AnfExpr {
 #[derive(Clone, Debug)]
 pub struct FunctionDef {
     /// Unique function label/name
-    pub label: String,
+    pub label: Symbol,
     /// Original Scheme name (for backtraces)
     pub source_name: Option<String>,
     /// Parameter names
@@ -203,6 +198,9 @@ pub struct AnfProgram {
     pub strings: Vec<String>,
     /// Symbol literals (interned, indexed)
     pub symbols: Vec<String>,
+    /// Identifier interner (variable/function-label names). Threaded through
+    /// the whole pipeline by value; never reset (see `AnfTransformer::interner`).
+    pub interner: Interner,
 }
 
 /// ANF Transformer - converts AST to ANF
@@ -215,6 +213,10 @@ pub struct AnfTransformer {
     /// Map from string to index for interning
     string_map: std::collections::HashMap<String, usize>,
     symbol_map: std::collections::HashMap<String, usize>,
+    /// Identifier interner. Unlike `strings`/`symbols` (literal tables, reset
+    /// per `transform_program` call for REPL line-locality), this must never
+    /// be reset/drained across calls on the same instance - see spec §12.4.
+    interner: Interner,
 }
 
 impl AnfTransformer {
@@ -227,19 +229,20 @@ impl AnfTransformer {
             symbols: Vec::new(),
             string_map: std::collections::HashMap::new(),
             symbol_map: std::collections::HashMap::new(),
+            interner: Interner::new(),
         }
     }
 
     fn fresh_temp(&mut self) -> VarId {
         let id = self.temp_counter;
         self.temp_counter += 1;
-        VarId::temp(id)
+        VarId::temp(id, &mut self.interner)
     }
 
-    fn fresh_label(&mut self, prefix: &str) -> String {
+    fn fresh_label(&mut self, prefix: &str) -> Symbol {
         let id = self.label_counter;
         self.label_counter += 1;
-        format!("{}_{}", prefix, id)
+        self.interner.intern(&format!("{}_{}", prefix, id))
     }
 
     fn intern_string(&mut self, s: &str) -> usize {
@@ -274,6 +277,9 @@ impl AnfTransformer {
             entry,
             strings: std::mem::take(&mut self.strings),
             symbols: std::mem::take(&mut self.symbols),
+            // NOT drained/reset - the identifier interner must persist across
+            // multiple `transform_program` calls on one instance (§12.4).
+            interner: self.interner.clone(),
         })
     }
 
@@ -341,7 +347,7 @@ impl AnfTransformer {
             }
             Value::Symbol(s) => {
                 // Symbols as expressions are variable references
-                Ok(AnfExpr::Return(Atom::Var(VarId::new(s))))
+                Ok(AnfExpr::Return(Atom::Var(VarId::new(s, &mut self.interner))))
             }
             Value::List(list) => {
                 let elements = list.to_vec();
@@ -645,10 +651,13 @@ impl AnfTransformer {
 
         // Create function definition
         let label = self.fresh_label("lambda");
-        let param_vars: Vec<VarId> = params.iter().map(|p| VarId::new(p)).collect();
+        let param_vars: Vec<VarId> = params
+            .iter()
+            .map(|p| VarId::new(p, &mut self.interner))
+            .collect();
 
         let func_def = FunctionDef {
-            label: label.clone(),
+            label,
             source_name: None,
             params: param_vars,
             has_env: false, // Will be set during closure conversion
@@ -717,7 +726,7 @@ impl AnfTransformer {
 
             // Wrap value bindings
             result = AnfExpr::Let {
-                var: VarId::new(&name),
+                var: VarId::new(&name, &mut self.interner),
                 value: value_complex,
                 body: Box::new(result),
             };
@@ -804,7 +813,7 @@ impl AnfTransformer {
                 let (bindings, complex) = self.normalize_to_complex(&args[1])?;
 
                 let mut result = AnfExpr::Let {
-                    var: VarId::new(name),
+                    var: VarId::new(name, &mut self.interner),
                     value: complex,
                     body: Box::new(AnfExpr::Return(Atom::Void)),
                 };
@@ -845,10 +854,10 @@ impl AnfTransformer {
                 // Bind to name
                 match lambda_anf {
                     AnfExpr::Return(atom) => Ok(AnfExpr::Let {
-                        var: VarId::new(&name),
+                        var: VarId::new(&name, &mut self.interner),
                         value: ComplexExpr::MakeClosure {
                             label: match &atom {
-                                Atom::Var(v) => v.0.clone(),
+                                Atom::Var(v) => v.0,
                                 _ => return Err("Expected lambda label".to_string()),
                             },
                             captures: vec![],
@@ -878,7 +887,7 @@ impl AnfTransformer {
         // Full implementation requires tracking mutable variables
         let mut result = AnfExpr::Seq {
             effect: ComplexExpr::WriteBox {
-                box_var: VarId::new(&name),
+                box_var: VarId::new(&name, &mut self.interner),
                 value: value_atom,
             },
             body: Box::new(AnfExpr::Return(Atom::Void)),
@@ -1207,7 +1216,7 @@ impl AnfTransformer {
                 let idx = self.intern_string(s);
                 Ok((vec![], Atom::String(idx)))
             }
-            Value::Symbol(s) => Ok((vec![], Atom::Var(VarId::new(s)))),
+            Value::Symbol(s) => Ok((vec![], Atom::Var(VarId::new(s, &mut self.interner)))),
 
             // Complex - needs let-binding
             _ => {

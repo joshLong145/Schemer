@@ -12,6 +12,7 @@ use crate::compiler::primitives::{get_primitive_impl, InlineOp, PrimImpl};
 use crate::compiler::qbe::{
     QbeBlock, QbeData, QbeDataItem, QbeFunction, QbeInst, QbeModule, QbeOp, QbeType, QbeValue,
 };
+use crate::interner::Interner;
 use crate::tags;
 
 /// Code generator state
@@ -28,6 +29,10 @@ pub struct CodeGenerator {
     pending_blocks: Vec<QbeBlock>,
     /// String literals from the program (for length info)
     strings: Vec<String>,
+    /// Identifier interner (cloned from the program being generated; codegen
+    /// may additionally intern `"__env"` for functions that gained `has_env`
+    /// during closure conversion but had no free variables to capture).
+    interner: Interner,
 }
 
 impl CodeGenerator {
@@ -39,6 +44,7 @@ impl CodeGenerator {
             var_map: HashMap::new(),
             pending_blocks: Vec::new(),
             strings: Vec::new(),
+            interner: Interner::new(),
         }
     }
 
@@ -113,6 +119,7 @@ impl CodeGenerator {
 
         // Store strings for later use in generate_atom
         self.strings = program.strings.clone();
+        self.interner = program.interner.clone();
 
         // Generate data section for strings (raw bytes)
         for (idx, s) in program.strings.iter().enumerate() {
@@ -171,12 +178,13 @@ impl CodeGenerator {
         self.pending_blocks.clear();
         self.temp_counter = 0;
         self.label_counter = 0;
-        self.current_function = Some(func.label.clone());
+        let func_name = self.interner.resolve(func.label).to_string();
+        self.current_function = Some(func_name.clone());
 
         debug!(
             target: "codegen",
             "Generating function '{}': {} params, has_env={}, {} free vars",
-            func.label,
+            func_name,
             func.params.len(),
             func.has_env,
             func.free_vars.len()
@@ -188,17 +196,18 @@ impl CodeGenerator {
         // If function has environment, first param is the closure
         if func.has_env {
             let env_temp = "env".to_string();
-            self.var_map.insert(VarId::new("__env"), env_temp.clone());
+            let env_var = VarId::new("__env", &mut self.interner);
+            self.var_map.insert(env_var, env_temp.clone());
             params.push((QbeType::Long, env_temp));
-            trace!(target: "codegen", "  Function '{}': added __env parameter", func.label);
+            trace!(target: "codegen", "  Function '{}': added __env parameter", func_name);
         }
 
         // Regular parameters
         for param in &func.params {
-            let temp = format!("p_{}", Self::sanitize_ident(param.name()));
-            self.var_map.insert(param.clone(), temp.clone());
+            let temp = format!("p_{}", Self::sanitize_ident(param.name(&self.interner)));
+            self.var_map.insert(*param, temp.clone());
             params.push((QbeType::Long, temp.clone()));
-            trace!(target: "codegen", "  Function '{}': param '{}' -> {}", func.label, param.name(), temp);
+            trace!(target: "codegen", "  Function '{}': param '{}' -> {}", func_name, param.name(&self.interner), temp);
         }
 
         // Generate function body
@@ -211,7 +220,7 @@ impl CodeGenerator {
         info!(
             target: "codegen",
             "Function '{}' generated: {} blocks",
-            func.label,
+            func_name,
             blocks.len()
         );
 
@@ -226,7 +235,7 @@ impl CodeGenerator {
 
         QbeFunction {
             export: true, // Export all Scheme functions for now
-            name: func.label.clone(),
+            name: func_name,
             params,
             return_type: Some(QbeType::Long), // All Scheme values are 64-bit
             blocks,
@@ -591,7 +600,7 @@ impl CodeGenerator {
                     target: "codegen",
                     "MakeClosure in '{}': target='{}', {} captures",
                     func_name,
-                    label,
+                    self.interner.resolve(*label),
                     ncaptures
                 );
 
@@ -599,7 +608,10 @@ impl CodeGenerator {
                     dest: Some(dest.to_string()),
                     func: QbeValue::Global("scm_alloc_closure".to_string()),
                     args: vec![
-                        (QbeType::Long, QbeValue::Global(label.clone())),
+                        (
+                            QbeType::Long,
+                            QbeValue::Global(self.interner.resolve(*label).to_string()),
+                        ),
                         (QbeType::Long, QbeValue::Const(ncaptures)),
                     ],
                 });
@@ -613,7 +625,7 @@ impl CodeGenerator {
                             target: "codegen",
                             "  Capture slot {}: '{}' (bound)",
                             i,
-                            var.name()
+                            var.name(&self.interner)
                         );
                         insts.push(QbeInst::Call {
                             dest: None,
@@ -629,7 +641,7 @@ impl CodeGenerator {
                             target: "codegen",
                             "  Capture slot {}: '{}' (deferred/self-ref)",
                             i,
-                            var.name()
+                            var.name(&self.interner)
                         );
                         deferred.push(i);
                     }

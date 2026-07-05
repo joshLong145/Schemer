@@ -8,13 +8,17 @@ use std::collections::HashSet;
 use log::{debug, info, trace};
 
 use super::anf::*;
+use crate::interner::{Interner, Symbol};
 
 /// Closure converter
 pub struct ClosureConverter {
     /// Generated lifted functions
     lifted_functions: Vec<FunctionDef>,
     /// Map from function label to free variables (for populating MakeClosure captures)
-    func_free_vars: std::collections::HashMap<String, Vec<VarId>>,
+    func_free_vars: std::collections::HashMap<Symbol, Vec<VarId>>,
+    /// Identifier interner, taken from the incoming `AnfProgram` for the
+    /// duration of `convert` and handed back in the result (see anf.rs §12).
+    interner: Interner,
 }
 
 impl ClosureConverter {
@@ -22,11 +26,14 @@ impl ClosureConverter {
         Self {
             lifted_functions: Vec::new(),
             func_free_vars: std::collections::HashMap::new(),
+            interner: Interner::new(),
         }
     }
 
     /// Convert a program, making all closures explicit
     pub fn convert(&mut self, program: AnfProgram) -> AnfProgram {
+        self.interner = program.interner;
+
         info!(
             target: "closure",
             "Starting closure conversion for {} functions",
@@ -46,12 +53,18 @@ impl ClosureConverter {
                 debug!(
                     target: "closure",
                     "Function '{}': direct free vars = {:?}, params = {:?}",
-                    f.label,
-                    fv_list,
-                    f.params.iter().map(|p| p.name()).collect::<Vec<_>>()
+                    self.interner.resolve(f.label),
+                    fv_list
+                        .iter()
+                        .map(|v| v.name(&self.interner))
+                        .collect::<Vec<_>>(),
+                    f.params
+                        .iter()
+                        .map(|p| p.name(&self.interner))
+                        .collect::<Vec<_>>()
                 );
 
-                self.func_free_vars.insert(f.label.clone(), fv_list);
+                self.func_free_vars.insert(f.label, fv_list);
                 f
             })
             .collect();
@@ -67,8 +80,11 @@ impl ClosureConverter {
                 info!(
                     target: "closure",
                     "Function '{}' captures: {:?}",
-                    f.label,
-                    f.free_vars.iter().map(|v| v.name()).collect::<Vec<_>>()
+                    self.interner.resolve(f.label),
+                    f.free_vars
+                        .iter()
+                        .map(|v| v.name(&self.interner))
+                        .collect::<Vec<_>>()
                 );
             }
         }
@@ -98,6 +114,7 @@ impl ClosureConverter {
             entry,
             strings: program.strings,
             symbols: program.symbols,
+            interner: std::mem::take(&mut self.interner),
         }
     }
 
@@ -125,8 +142,8 @@ impl ClosureConverter {
                         debug!(
                             target: "closure",
                             "Transitive capture: '{}' now captures '{}' (iteration {})",
-                            func.label,
-                            v.name(),
+                            self.interner.resolve(func.label),
+                            v.name(&self.interner),
                             iteration
                         );
                         func.free_vars.insert(v.clone());
@@ -136,7 +153,7 @@ impl ClosureConverter {
 
                 // Update the map
                 let fv_list: Vec<_> = func.free_vars.iter().cloned().collect();
-                self.func_free_vars.insert(func.label.clone(), fv_list);
+                self.func_free_vars.insert(func.label, fv_list);
             }
 
             if !changed {
@@ -234,17 +251,19 @@ impl ClosureConverter {
             debug!(
                 target: "closure",
                 "Converting function '{}' with {} captures: {:?}",
-                func.label,
+                self.interner.resolve(func.label),
                 func.free_vars.len(),
-                func.free_vars.iter().map(|v| v.name()).collect::<Vec<_>>()
+                func.free_vars
+                    .iter()
+                    .map(|v| v.name(&self.interner))
+                    .collect::<Vec<_>>()
             );
-            let _env_param = VarId::new("__env");
             func.body = self.convert_expr_with_env(&func.body, &bound, &func.free_vars);
         } else {
             trace!(
                 target: "closure",
                 "Converting function '{}' with no captures",
-                func.label
+                self.interner.resolve(func.label)
             );
             func.body = self.convert_expr(&func.body, &bound);
         }
@@ -298,7 +317,7 @@ impl ClosureConverter {
             result = AnfExpr::Let {
                 var: var.clone(),
                 value: ComplexExpr::ClosureRef {
-                    closure: VarId::new("__env"),
+                    closure: VarId::new("__env", &mut self.interner),
                     index,
                 },
                 body: Box::new(result),
@@ -333,12 +352,15 @@ impl ClosureConverter {
                 debug!(
                     target: "closure",
                     "MakeClosure for '{}': captures = {:?}",
-                    label,
-                    captures.iter().map(|v| v.name()).collect::<Vec<_>>()
+                    self.interner.resolve(*label),
+                    captures
+                        .iter()
+                        .map(|v| v.name(&self.interner))
+                        .collect::<Vec<_>>()
                 );
 
                 ComplexExpr::MakeClosure {
-                    label: label.clone(),
+                    label: *label,
                     captures,
                 }
             }
@@ -477,9 +499,17 @@ mod tests {
         transformer.transform_program(exprs).unwrap()
     }
 
-    /// Helper to create a VarId from a string
-    fn var(s: &str) -> VarId {
-        VarId(s.to_string())
+    /// Helper to check whether a function's label (resolved via the given
+    /// program's interner) starts with a prefix.
+    fn label_starts_with(program: &AnfProgram, func: &FunctionDef, prefix: &str) -> bool {
+        program.interner.resolve(func.label).starts_with(prefix)
+    }
+
+    /// Helper to create a VarId matching a name already interned in `program`
+    /// (re-interning is idempotent/dedup'd, so this yields the same `Symbol`).
+    fn var(program: &AnfProgram, s: &str) -> VarId {
+        let mut interner = program.interner.clone();
+        VarId::new(s, &mut interner)
     }
 
     #[test]
@@ -492,7 +522,7 @@ mod tests {
         // The lambda should have been lifted to a function
         // It should have no free variables since x is a parameter
         for func in &converted.functions {
-            if func.label.starts_with("lambda") {
+            if label_starts_with(&converted, func, "lambda") {
                 assert!(
                     func.free_vars.is_empty(),
                     "Identity lambda should have no free variables, but found: {:?}",
@@ -513,7 +543,7 @@ mod tests {
         let lambda_func = converted
             .functions
             .iter()
-            .find(|f| f.label.starts_with("lambda"));
+            .find(|f| label_starts_with(&converted, f, "lambda"));
 
         assert!(
             lambda_func.is_some(),
@@ -522,7 +552,7 @@ mod tests {
 
         let lambda = lambda_func.unwrap();
         assert!(
-            lambda.free_vars.contains(&var("y")),
+            lambda.free_vars.contains(&var(&converted, "y")),
             "Lambda should capture 'y', but free_vars is: {:?}",
             lambda.free_vars
         );
@@ -539,7 +569,7 @@ mod tests {
         let lambda_funcs: Vec<_> = converted
             .functions
             .iter()
-            .filter(|f| f.label.starts_with("lambda"))
+            .filter(|f| label_starts_with(&converted, f, "lambda"))
             .collect();
 
         assert!(
@@ -550,11 +580,13 @@ mod tests {
 
         // The inner lambda (which takes y) should capture x
         // Find the lambda that has 'y' as a parameter
-        let inner_lambda = lambda_funcs.iter().find(|f| f.params.contains(&var("y")));
+        let inner_lambda = lambda_funcs
+            .iter()
+            .find(|f| f.params.contains(&var(&converted, "y")));
 
         if let Some(inner) = inner_lambda {
             assert!(
-                inner.free_vars.contains(&var("x")),
+                inner.free_vars.contains(&var(&converted, "x")),
                 "Inner lambda should capture 'x', but free_vars is: {:?}",
                 inner.free_vars
             );
@@ -572,7 +604,7 @@ mod tests {
         let lambda_func = converted
             .functions
             .iter()
-            .find(|f| f.label.starts_with("lambda"));
+            .find(|f| label_starts_with(&converted, f, "lambda"));
 
         assert!(
             lambda_func.is_some(),
@@ -581,12 +613,12 @@ mod tests {
 
         let lambda = lambda_func.unwrap();
         assert!(
-            lambda.free_vars.contains(&var("a")),
+            lambda.free_vars.contains(&var(&converted, "a")),
             "Lambda should capture 'a', but free_vars is: {:?}",
             lambda.free_vars
         );
         assert!(
-            lambda.free_vars.contains(&var("b")),
+            lambda.free_vars.contains(&var(&converted, "b")),
             "Lambda should capture 'b', but free_vars is: {:?}",
             lambda.free_vars
         );
@@ -603,7 +635,7 @@ mod tests {
         let lambda_func = converted
             .functions
             .iter()
-            .find(|f| f.label.starts_with("lambda"));
+            .find(|f| label_starts_with(&converted, f, "lambda"));
 
         assert!(
             lambda_func.is_some(),
@@ -613,13 +645,13 @@ mod tests {
         let lambda = lambda_func.unwrap();
         // y is bound inside the lambda body, not free
         assert!(
-            !lambda.free_vars.contains(&var("y")),
+            !lambda.free_vars.contains(&var(&converted, "y")),
             "Lambda should NOT capture 'y' (it's bound inside), but free_vars is: {:?}",
             lambda.free_vars
         );
         // x is a parameter, also not free
         assert!(
-            !lambda.free_vars.contains(&var("x")),
+            !lambda.free_vars.contains(&var(&converted, "x")),
             "Lambda should NOT capture 'x' (it's a parameter), but free_vars is: {:?}",
             lambda.free_vars
         );
@@ -644,7 +676,7 @@ mod tests {
         let lambda_func = converted
             .functions
             .iter()
-            .find(|f| f.label.starts_with("lambda"));
+            .find(|f| label_starts_with(&converted, f, "lambda"));
 
         assert!(
             lambda_func.is_some(),
@@ -680,7 +712,7 @@ mod tests {
         let lambda_func = converted2
             .functions
             .iter()
-            .find(|f| f.label.starts_with("lambda"));
+            .find(|f| label_starts_with(&converted2, f, "lambda"));
 
         assert!(
             lambda_func.is_some(),
@@ -741,7 +773,7 @@ mod tests {
         let make_pred_lambda = converted
             .functions
             .iter()
-            .find(|f| f.params.contains(&var("captured")));
+            .find(|f| f.params.contains(&var(&converted, "captured")));
 
         assert!(
             make_pred_lambda.is_some(),
@@ -752,7 +784,7 @@ mod tests {
 
         // make-pred should capture my-fn transitively (because the inner lambda needs it)
         assert!(
-            make_pred.free_vars.contains(&var("my-fn")),
+            make_pred.free_vars.contains(&var(&converted, "my-fn")),
             "make-pred should transitively capture 'my-fn', but free_vars is: {:?}",
             make_pred.free_vars
         );
@@ -761,7 +793,7 @@ mod tests {
         let inner_lambda = converted
             .functions
             .iter()
-            .find(|f| f.params.contains(&var("x")) && !f.params.contains(&var("lst")));
+            .find(|f| f.params.contains(&var(&converted, "x")) && !f.params.contains(&var(&converted, "lst")));
 
         assert!(
             inner_lambda.is_some(),
@@ -772,12 +804,12 @@ mod tests {
 
         // Inner lambda should capture both my-fn and captured
         assert!(
-            inner.free_vars.contains(&var("my-fn")),
+            inner.free_vars.contains(&var(&converted, "my-fn")),
             "Inner lambda should capture 'my-fn', but free_vars is: {:?}",
             inner.free_vars
         );
         assert!(
-            inner.free_vars.contains(&var("captured")),
+            inner.free_vars.contains(&var(&converted, "captured")),
             "Inner lambda should capture 'captured', but free_vars is: {:?}",
             inner.free_vars
         );
@@ -809,7 +841,7 @@ mod tests {
         let wrapper_lambda = converted
             .functions
             .iter()
-            .find(|f| f.params.contains(&var("y")));
+            .find(|f| f.params.contains(&var(&converted, "y")));
 
         assert!(
             wrapper_lambda.is_some(),
@@ -820,7 +852,7 @@ mod tests {
 
         // wrapper should capture outer-fn transitively
         assert!(
-            wrapper.free_vars.contains(&var("outer-fn")),
+            wrapper.free_vars.contains(&var(&converted, "outer-fn")),
             "wrapper should transitively capture 'outer-fn', but free_vars is: {:?}",
             wrapper.free_vars
         );
@@ -829,7 +861,7 @@ mod tests {
         let inner_lambda = converted
             .functions
             .iter()
-            .find(|f| f.params.contains(&var("z")));
+            .find(|f| f.params.contains(&var(&converted, "z")));
 
         assert!(
             inner_lambda.is_some(),
@@ -840,7 +872,7 @@ mod tests {
 
         // Inner lambda should capture outer-fn
         assert!(
-            inner.free_vars.contains(&var("outer-fn")),
+            inner.free_vars.contains(&var(&converted, "outer-fn")),
             "Inner lambda should capture 'outer-fn', but free_vars is: {:?}",
             inner.free_vars
         );
@@ -878,7 +910,7 @@ mod tests {
         let test_fn_lambda = converted
             .functions
             .iter()
-            .find(|f| f.params.contains(&var("lst")));
+            .find(|f| f.params.contains(&var(&converted, "lst")));
 
         assert!(
             test_fn_lambda.is_some(),
@@ -889,7 +921,7 @@ mod tests {
 
         // test-fn should capture checker transitively (inner lambda in if branch needs it)
         assert!(
-            test_fn.free_vars.contains(&var("checker")),
+            test_fn.free_vars.contains(&var(&converted, "checker")),
             "test-fn should transitively capture 'checker' from if branch, but free_vars is: {:?}",
             test_fn.free_vars
         );
@@ -926,7 +958,7 @@ mod tests {
         let test_rec_lambda = converted
             .functions
             .iter()
-            .find(|f| f.params.contains(&var("input")));
+            .find(|f| f.params.contains(&var(&converted, "input")));
 
         assert!(
             test_rec_lambda.is_some(),
@@ -937,7 +969,7 @@ mod tests {
 
         // test-rec should capture my-check transitively (inner lambda in cond needs it)
         assert!(
-            test_rec.free_vars.contains(&var("my-check")),
+            test_rec.free_vars.contains(&var(&converted, "my-check")),
             "test-rec should transitively capture 'my-check' from cond branch, but free_vars is: {:?}",
             test_rec.free_vars
         );
@@ -972,7 +1004,7 @@ mod tests {
         let outer_lambda = converted
             .functions
             .iter()
-            .find(|f| f.params.contains(&var("a")));
+            .find(|f| f.params.contains(&var(&converted, "a")));
 
         assert!(
             outer_lambda.is_some(),
@@ -983,7 +1015,7 @@ mod tests {
         let middle_lambda = converted
             .functions
             .iter()
-            .find(|f| f.params.contains(&var("b")));
+            .find(|f| f.params.contains(&var(&converted, "b")));
 
         assert!(
             middle_lambda.is_some(),
@@ -994,7 +1026,7 @@ mod tests {
         let inner_lambda = converted
             .functions
             .iter()
-            .find(|f| f.params.contains(&var("c")));
+            .find(|f| f.params.contains(&var(&converted, "c")));
 
         assert!(
             inner_lambda.is_some(),
@@ -1007,17 +1039,17 @@ mod tests {
 
         // All three should capture global-fn
         assert!(
-            inner.free_vars.contains(&var("global-fn")),
+            inner.free_vars.contains(&var(&converted, "global-fn")),
             "Inner lambda should capture 'global-fn', but free_vars is: {:?}",
             inner.free_vars
         );
         assert!(
-            middle.free_vars.contains(&var("global-fn")),
+            middle.free_vars.contains(&var(&converted, "global-fn")),
             "Middle lambda should transitively capture 'global-fn', but free_vars is: {:?}",
             middle.free_vars
         );
         assert!(
-            outer.free_vars.contains(&var("global-fn")),
+            outer.free_vars.contains(&var(&converted, "global-fn")),
             "Outer lambda should transitively capture 'global-fn', but free_vars is: {:?}",
             outer.free_vars
         );
@@ -1051,7 +1083,7 @@ mod tests {
         let main_fn_lambda = converted
             .functions
             .iter()
-            .find(|f| f.params.contains(&var("y")));
+            .find(|f| f.params.contains(&var(&converted, "y")));
 
         assert!(
             main_fn_lambda.is_some(),
@@ -1062,7 +1094,7 @@ mod tests {
 
         // main-fn should capture helper transitively
         assert!(
-            main_fn.free_vars.contains(&var("helper")),
+            main_fn.free_vars.contains(&var(&converted, "helper")),
             "main-fn should transitively capture 'helper', but free_vars is: {:?}",
             main_fn.free_vars
         );
