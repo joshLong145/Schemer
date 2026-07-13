@@ -98,7 +98,8 @@ fn parse_and_eval_list_append_from_proc() {
         vec![
             Value::Number(Number::Int(1)),
             Value::Number(Number::Int(2)),
-            Value::Number(Number::Int(1)),]
+            Value::Number(Number::Int(1)),
+        ]
     );
 }
 
@@ -113,7 +114,8 @@ fn parse_and_eval_list_append_list_from_proc() {
         vec![
             Value::Number(Number::Int(1)),
             Value::Number(Number::Int(2)),
-            Value::Number(Number::Int(3)),]
+            Value::Number(Number::Int(3)),
+        ]
     );
 }
 
@@ -126,7 +128,8 @@ fn parse_and_eval_list_append_single() {
         vec![
             Value::Number(Number::Int(1)),
             Value::Number(Number::Int(2)),
-            Value::Number(Number::Int(1)),]
+            Value::Number(Number::Int(1)),
+        ]
     );
 }
 
@@ -147,7 +150,8 @@ fn parse_and_eval_list_append_multiple() {
             Value::Number(Number::Int(1)),
             Value::Number(Number::Int(2)),
             Value::Number(Number::Int(1)),
-            Value::Number(Number::Int(1)),]
+            Value::Number(Number::Int(1)),
+        ]
     );
 }
 
@@ -189,7 +193,8 @@ fn parse_and_eval_map_with_lambda() {
         vec![
             Value::Number(Number::Int(3)),
             Value::Number(Number::Int(4)),
-            Value::Number(Number::Int(4)),]
+            Value::Number(Number::Int(4)),
+        ]
     );
 }
 
@@ -217,10 +222,9 @@ fn parse_and_eval_procedure_call_as_procedure_arg() {
 #[test]
 fn parse_and_eval_map_with_function_symbol() {
     setup_logging();
-    let res = eval_with_helpers(
-        "(begin (define foo (lambda (x) (+ 1 x))) (define f (map foo '(9))) f)",
-    )
-    .unwrap();
+    let res =
+        eval_with_helpers("(begin (define foo (lambda (x) (+ 1 x))) (define f (map foo '(9))) f)")
+            .unwrap();
     assert_eq!(to_vec(&res), vec![Value::Number(Number::Int(10))]);
 }
 
@@ -235,7 +239,8 @@ fn parse_and_eval_filter_with_function() {
         to_vec(&res),
         vec![
             Value::Number(Number::Int(10)),
-            Value::Number(Number::Int(3)),]
+            Value::Number(Number::Int(3)),
+        ]
     );
 }
 
@@ -250,7 +255,8 @@ fn parse_and_eval_filter_with_function_symbol() {
         to_vec(&res),
         vec![
             Value::Number(Number::Int(10)),
-            Value::Number(Number::Int(3)),]
+            Value::Number(Number::Int(3)),
+        ]
     );
 }
 
@@ -425,4 +431,30 @@ fn self_recursive_tail_loop_does_not_overflow_the_stack() {
     )
     .unwrap();
     assert_eq!(res, Value::Number(Number::Int(2_000_000)));
+}
+
+#[test]
+fn inner_recursive_define_can_see_itself() {
+    setup_logging();
+    // A `define` inside a lambda body whose value is a self-recursive
+    // lambda (the prelude's `reverse`/`rev-iter` shape). Requires the
+    // interpreter's recursive-knot handling for Let-bound closures plus
+    // the anf_to_complex MakeClosure collapse - without them, `rev-iter`
+    // inside its own body is an undefined variable.
+    let res = eval_str(
+        "(define reverse (lambda (lst)
+           (define rev-iter (lambda (l acc)
+             (if (null? l) acc (rev-iter (cdr l) (cons (car l) acc)))))
+           (rev-iter lst '())))
+         (reverse '(1 2 3))",
+    )
+    .unwrap();
+    assert_eq!(
+        to_vec(&res),
+        vec![
+            Value::Number(Number::Int(3)),
+            Value::Number(Number::Int(2)),
+            Value::Number(Number::Int(1)),
+        ]
+    );
 }

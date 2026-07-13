@@ -272,6 +272,20 @@ impl AnfTransformer {
         // Wrap all top-level expressions in a begin
         let entry = self.transform_top_level(exprs)?;
 
+        // `string_map`/`symbol_map` dedup *literal* indices into `strings`/
+        // `symbols`, which are drained (mem::take) below on every call - so
+        // the maps must be reset alongside them (§8/§12.4). Otherwise a
+        // string/symbol literal already interned on a previous call would
+        // hit a stale map entry and return an index into that previous
+        // (already-returned) `strings`/`symbols` vec, not this call's fresh
+        // one. This is exactly what makes REPL mode viable: each line gets
+        // line-local literal tables, while `functions` and the identifier
+        // `interner` (below) keep their own, deliberately different, reset
+        // policies (functions: also drained/reset per call; interner: never
+        // reset, persists across calls).
+        self.string_map.clear();
+        self.symbol_map.clear();
+
         Ok(AnfProgram {
             functions: std::mem::take(&mut self.functions),
             entry,
@@ -347,7 +361,10 @@ impl AnfTransformer {
             }
             Value::Symbol(s) => {
                 // Symbols as expressions are variable references
-                Ok(AnfExpr::Return(Atom::Var(VarId::new(s, &mut self.interner))))
+                Ok(AnfExpr::Return(Atom::Var(VarId::new(
+                    s,
+                    &mut self.interner,
+                ))))
             }
             Value::List(list) => {
                 let elements = list.to_vec();
@@ -851,8 +868,24 @@ impl AnfTransformer {
 
                 let lambda_anf = self.transform_lambda(&lambda_args)?;
 
-                // Bind to name
+                // Bind to name. `transform_lambda` always returns
+                // `Let { var: <temp>, value: MakeClosure{label,captures}, body: Return(Var(temp)) }`
+                // (never a bare `Return(atom)`) - so match that shape directly
+                // and bind the closure straight to `name`, instead of leaving
+                // it bound to the temp and silently dropping the function's
+                // name (a pre-existing bug, present on master before this
+                // session's work: the name was never actually registered as
+                // a variable, so a top-level named function could never be
+                // referenced from a later top-level form).
                 match lambda_anf {
+                    AnfExpr::Let {
+                        value: ComplexExpr::MakeClosure { label, captures },
+                        ..
+                    } => Ok(AnfExpr::Let {
+                        var: VarId::new(&name, &mut self.interner),
+                        value: ComplexExpr::MakeClosure { label, captures },
+                        body: Box::new(AnfExpr::Return(Atom::Void)),
+                    }),
                     AnfExpr::Return(atom) => Ok(AnfExpr::Let {
                         var: VarId::new(&name, &mut self.interner),
                         value: ComplexExpr::MakeClosure {
@@ -1258,6 +1291,26 @@ impl AnfTransformer {
             }
             AnfExpr::Let { var, value, body } => {
                 let (mut bindings, final_complex) = self.anf_to_complex(*body)?;
+                // Peephole: `let t = MakeClosure in Identity(t)` (the exact
+                // shape transform_lambda produces) collapses to the
+                // MakeClosure itself, so `(define f (lambda ...))` and
+                // `(let ((f (lambda ...))) ...)` bind the closure directly
+                // to `f` rather than through a fresh temp. This is what lets
+                // the interpreter tie the recursive knot for self-recursive
+                // inner defines/letrec (interp.rs binds Let-of-MakeClosure
+                // specially); `t` is a fresh temp consumed only by the
+                // Identity, so dropping the binding is safe.
+                if bindings.is_empty() && matches!(value, ComplexExpr::MakeClosure { .. }) {
+                    if let ComplexExpr::PrimApp {
+                        op: PrimOp::Identity,
+                        args,
+                    } = &final_complex
+                    {
+                        if matches!(args.as_slice(), [Atom::Var(v)] if *v == var) {
+                            return Ok((vec![], value));
+                        }
+                    }
+                }
                 bindings.insert(0, (var, value));
                 Ok((bindings, final_complex))
             }
@@ -1464,6 +1517,37 @@ mod tests {
     }
 
     #[test]
+    fn test_toplevel_function_define_binds_name_not_a_temp() {
+        // Regression test: transform_lambda always returns
+        // `Let { var: <temp>, value: MakeClosure{..}, body: Return(Var(temp)) }`,
+        // never a bare `Return(atom)`. transform_define's function-shorthand
+        // branch used to only pattern-match the (never-produced) bare-Return
+        // shape and silently fall through to `other => Ok(other)` otherwise,
+        // which discarded the function's name entirely and left the closure
+        // bound only to the internal temp - so a later top-level form
+        // referencing the function by name could never resolve it.
+        let result = transform("(define (id n) n) (display (id 5))")
+            .expect("Failed to transform define-then-call");
+
+        // The entry's outermost Let must bind the closure to "id" itself,
+        // not to a compiler-generated temp.
+        match &result.entry {
+            AnfExpr::Let { var, value, .. } => {
+                assert!(
+                    matches!(value, ComplexExpr::MakeClosure { .. }),
+                    "expected the outermost binding to be the (define (id n) n) closure"
+                );
+                assert_eq!(
+                    result.interner.resolve(var.0),
+                    "id",
+                    "the define's closure must be bound to the function's real name, not a temp"
+                );
+            }
+            other => panic!("expected entry to start with a Let binding, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn test_recursive_function() {
         // (define (f x) (f x)) - a recursive function
         let result =
@@ -1511,6 +1595,70 @@ mod tests {
             result.strings.contains(&"hello".to_string()),
             "Interned strings should contain 'hello'"
         );
+    }
+
+    #[test]
+    fn test_transform_program_twice_reuses_line_local_string_indices() {
+        // Regression test for §8/§12.4: string_map/symbol_map must reset
+        // alongside strings/symbols on every transform_program call, so a
+        // literal repeated on a second call gets a valid index into *that
+        // call's* returned AnfProgram.strings, not a stale index into the
+        // first call's (already-returned) strings vec.
+        let mut transformer = AnfTransformer::new();
+
+        let first = transformer
+            .transform_program(parse("\"hello\""))
+            .expect("first transform_program call failed");
+        assert_eq!(first.strings, vec!["hello".to_string()]);
+
+        let second = transformer
+            .transform_program(parse("\"hello\""))
+            .expect("second transform_program call failed");
+        // Second call's own table must contain the literal at a valid index
+        // into its own (freshly returned) strings vec - not empty/stale.
+        assert_eq!(second.strings, vec!["hello".to_string()]);
+        if let AnfExpr::Let { value, .. } = &second.entry {
+            if let ComplexExpr::PrimApp { args, .. } = value {
+                if let Some(Atom::String(idx)) = args.first() {
+                    assert!(
+                        *idx < second.strings.len(),
+                        "Atom::String({}) out of range for second call's strings (len {})",
+                        idx,
+                        second.strings.len()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_transform_program_twice_keeps_identifier_interner_across_calls() {
+        // The identifier Interner (VarId/FunctionDef.label) has the opposite
+        // reset policy from string_map/symbol_map: it must NOT be reset, so
+        // a name defined on one line is still the same Symbol on a later
+        // line (required for REPL mode, §8/§12.4).
+        let mut transformer = AnfTransformer::new();
+
+        let first = transformer
+            .transform_program(parse("(define x 1)"))
+            .expect("first transform_program call failed");
+        let second = transformer
+            .transform_program(parse("x"))
+            .expect("second transform_program call failed");
+
+        // Resolve "x" fresh against the second program's interner (a clone
+        // taken after the same underlying table) and confirm it interns to
+        // the identical Symbol used by the first program's binding.
+        let mut interner = second.interner.clone();
+        let x_symbol = interner.intern("x");
+        if let AnfExpr::Let { var, .. } = &first.entry {
+            assert_eq!(
+                var.0, x_symbol,
+                "identifier interner should persist across transform_program calls"
+            );
+        } else {
+            panic!("expected first.entry to be a Let binding for 'x'");
+        }
     }
 
     #[test]

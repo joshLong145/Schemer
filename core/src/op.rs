@@ -1,43 +1,5 @@
-use crate::types::{Number, Value};
+use crate::types::Number;
 use std::cmp::Ordering;
-
-// Value-based numeric operations
-pub trait ValueNumericOps {
-    fn add(&self, other: &Value) -> Result<Value, String>;
-    fn sub(&self, other: &Value) -> Result<Value, String>;
-    fn mul(&self, other: &Value) -> Result<Value, String>;
-    fn div(&self, other: &Value) -> Result<Value, String>;
-}
-
-impl ValueNumericOps for Value {
-    fn add(&self, other: &Value) -> Result<Value, String> {
-        match (self, other) {
-            (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l.add(r))),
-            _ => Err("+ requires numeric arguments".to_string()),
-        }
-    }
-
-    fn sub(&self, other: &Value) -> Result<Value, String> {
-        match (self, other) {
-            (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l.sub(r))),
-            _ => Err("- requires numeric arguments".to_string()),
-        }
-    }
-
-    fn mul(&self, other: &Value) -> Result<Value, String> {
-        match (self, other) {
-            (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l.mul(r))),
-            _ => Err("* requires numeric arguments".to_string()),
-        }
-    }
-
-    fn div(&self, other: &Value) -> Result<Value, String> {
-        match (self, other) {
-            (Value::Number(l), Value::Number(r)) => l.div(r).map(Value::Number),
-            _ => Err("/ requires numeric arguments".to_string()),
-        }
-    }
-}
 
 impl Number {
     pub fn add(&self, other: &Number) -> Number {

@@ -2,7 +2,6 @@ mod op;
 
 pub mod interner;
 
-pub mod env;
 pub mod error;
 pub mod eval;
 pub mod parser;

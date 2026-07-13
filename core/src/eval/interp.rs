@@ -36,7 +36,6 @@ pub fn eval_atom(atom: &Atom, env: &Rc<Env>, session: &Session) -> Result<Value,
 
 fn lookup(var: &VarId, env: &Rc<Env>, session: &Session) -> Result<Value, String> {
     env.lookup(var.0)
-        .cloned()
         .or_else(|| session.globals.get(&var.0).cloned())
         .ok_or_else(|| format!("undefined variable: {}", session.interner.resolve(var.0)))
 }
@@ -85,6 +84,24 @@ fn step(expr: &AnfExpr, env: &Rc<Env>, session: &mut Session) -> Result<Step, St
                     let branch = if c.is_truthy() { then_expr } else { else_expr };
                     return step(branch, env, session);
                 }
+            }
+            // Binding a closure: tie the recursive knot so the closure's
+            // body can reference the binding itself (self-recursive inner
+            // `define`s / `letrec`, e.g. the prelude's `rev-iter`). The
+            // frame is created first with a placeholder, the closure
+            // captures the frame - its own binding included - and the
+            // placeholder is patched to the closure. The compiled backend
+            // gets the same effect from closure conversion's deferred
+            // self-reference capture slots (codegen.rs); the interpreter,
+            // which skips closure conversion (§4), does it here instead.
+            if let ComplexExpr::MakeClosure { label, .. } = value {
+                let env2 = env.extend(vec![(var.0, Value::Void)]);
+                let closure = Value::Closure(Closure {
+                    label: *label,
+                    env: env2.clone(),
+                });
+                env2.rebind(var.0, closure);
+                return step(body, &env2, session);
             }
 
             let v = eval_complex(value, env, session)?;
@@ -394,7 +411,9 @@ mod tests {
         // The body references `f` as a free variable (self-recursion);
         // resolve it via `Session.globals` (§11 item 1's fallback), since
         // this fixture bypasses `MakeClosure`/closure-capture wiring.
-        session.globals.insert(label, Value::Closure(closure.clone()));
+        session
+            .globals
+            .insert(label, Value::Closure(closure.clone()));
         let result = apply_tail(
             closure,
             vec![Value::Number(crate::types::Number::Int(2_000_000))],

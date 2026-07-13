@@ -13,9 +13,7 @@ use crate::types::{Number, Value};
 /// indices against `session`. Errors on `Atom::Var` (see module docs).
 pub fn atom_to_value(atom: &Atom, session: &Session) -> Result<Value, String> {
     match atom {
-        Atom::Var(_) => {
-            Err("atom_to_value: Var must be resolved via the environment".to_string())
-        }
+        Atom::Var(_) => Err("atom_to_value: Var must be resolved via the environment".to_string()),
         Atom::Int(i) => Ok(Value::Number(Number::Int(*i))),
         Atom::Float(f) => Ok(Value::Number(Number::Float(*f))),
         Atom::Bool(b) => Ok(Value::Boolean(*b)),

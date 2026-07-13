@@ -790,10 +790,9 @@ mod tests {
         );
 
         // Find the inner lambda (the one with parameter "x" that isn't my-fn)
-        let inner_lambda = converted
-            .functions
-            .iter()
-            .find(|f| f.params.contains(&var(&converted, "x")) && !f.params.contains(&var(&converted, "lst")));
+        let inner_lambda = converted.functions.iter().find(|f| {
+            f.params.contains(&var(&converted, "x")) && !f.params.contains(&var(&converted, "lst"))
+        });
 
         assert!(
             inner_lambda.is_some(),

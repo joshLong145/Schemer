@@ -1,17 +1,8 @@
-//! ANF-based Scheme evaluator.
-//!
-//! `legacy` is today's `Value`-walking evaluator (formerly `core/src/eval.rs`,
-//! relocated here only because Rust doesn't allow both `eval.rs` and an
-//! `eval/` directory module of the same name to coexist - its content is
-//! unchanged and still fully usable via the re-export below). It is replaced
-//! by the modules below, which evaluate the *same* `AnfProgram` the compiler
-//! produces (see `docs/design/anf-interpreter-spec.md`) instead of
-//! re-implementing special-form desugaring over raw `Value` S-expressions.
-//! `legacy` is deleted once all callers migrate (rollout step 9 - not this
-//! pass).
-
-mod legacy;
-pub use legacy::*;
+//! ANF-based Scheme evaluator: consumes the *same* `AnfProgram` the compiler
+//! produces (see `docs/design/anf-interpreter-spec.md`), so special-form
+//! semantics are defined once, in `AnfTransformer`, for both backends.
+//! (The previous `Value`-walking evaluator, `core/src/eval.rs`, was deleted
+//! in rollout step 9 once all callers migrated here.)
 
 pub mod interp;
 pub mod primitives;
